@@ -82,6 +82,7 @@ enum {
 struct switchtec_dev {
 	struct pci_dev *pdev;
 	struct msix_entry *msix;
+	struct device *dev;
 
 	unsigned int event_irq;
 
@@ -92,7 +93,8 @@ struct switchtec_dev {
 };
 
 #define stdev_pdev(stdev) ((stdev)->pdev)
+#define stdev_pdev_dev(stdev) (&stdev_pdev(stdev)->dev)
 #define stdev_name(stdev) pci_name(stdev_pdev(stdev))
-#define stdev_dev(stdev) (&stdev_pdev(stdev)->dev)
+#define stdev_dev(stdev) (stdev->dev)
 
 #endif

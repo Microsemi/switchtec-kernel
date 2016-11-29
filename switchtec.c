@@ -145,7 +145,7 @@ static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
 	if (rc)
 		goto err_msix_request;
 
-	dev_dbg(stdev_dev(stdev), "Using msix interrupts\n");
+	dev_dbg(stdev_pdev_dev(stdev), "Using msix interrupts\n");
 	return 0;
 
 err_msix_request:
@@ -179,7 +179,7 @@ static int switchtec_init_msi_isr(struct switchtec_dev *stdev)
 	if (rc)
 		goto err_msi_request;
 
-	dev_dbg(stdev_dev(stdev), "Using msi interrupts\n");
+	dev_dbg(stdev_pdev_dev(stdev), "Using msi interrupts\n");
 	return 0;
 
 err_msi_request:
@@ -296,14 +296,20 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 
 	rc = switchtec_init_isr(stdev);
 	if (rc) {
-		dev_err(stdev_dev(stdev), "failed to init isr.\n");
+		dev_err(stdev_pdev_dev(stdev), "failed to init isr.\n");
 		goto err_init_isr;
 	}
 
-	dev_info(&pdev->dev, "Management device registered.\n");
+	rc = switchtec_register_dev(stdev);
+	if (rc)
+		goto err_register_dev;
+
+	dev_info(stdev_dev(stdev), "Management device registered.\n");
 
 	return 0;
 
+err_register_dev:
+	switchtec_deinit_isr(stdev);
 err_init_isr:
 	switchtec_deinit_pci(stdev);
 err_init_pci:
@@ -316,6 +322,7 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 {
 	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
 
+	switchtec_unregister_dev(stdev);
 	switchtec_deinit_isr(stdev);
 	switchtec_deinit_pci(stdev);
 	kfree(stdev);
@@ -343,15 +350,44 @@ static struct pci_driver switchtec_pci_driver = {
 
 static int __init switchtec_init(void)
 {
+	int rc;
+
+	rc = register_chrdev(0, "switchtec", &switchtec_fops);
+	if (rc < 0)
+		return rc;
+	switchtec_major = rc;
+
+	switchtec_class = class_create(THIS_MODULE, "switchtec");
+	if (IS_ERR(switchtec_class)) {
+		rc = PTR_ERR(switchtec_class);
+		goto err_create_class;
+	}
+
+	rc = pci_register_driver(&switchtec_pci_driver);
+	if (rc)
+		goto err_pci_register;
+
+
 	pr_info(KBUILD_MODNAME ": loaded.\n");
 
-	return pci_register_driver(&switchtec_pci_driver);
+	return 0;
+
+err_pci_register:
+	class_destroy(switchtec_class);
+
+err_create_class:
+	unregister_chrdev(switchtec_major, "switchtec");
+
+	return rc;
 }
 module_init(switchtec_init);
 
 static void __exit switchtec_exit(void)
 {
 	pci_unregister_driver(&switchtec_pci_driver);
+	class_destroy(switchtec_class);
+	unregister_chrdev(switchtec_major, "switchtec");
+	ida_destroy(&switchtec_minor_ida);
 
 	pr_info(KBUILD_MODNAME ": unloaded.\n");
 }
