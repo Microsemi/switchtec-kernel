@@ -50,14 +50,113 @@ static void stdev_put(struct switchtec_dev *stdev)
 	kref_put(&stdev->kref, stdev_free);
 }
 
+static int __match_devt(struct device *dev, const void *data)
+{
+	const dev_t *devt = data;
+
+	return dev->devt == *devt;
+}
+
+static struct device *switchtec_dev_find(dev_t dev_t)
+{
+	return class_find_device(switchtec_class, NULL, &dev_t, __match_devt);
+}
+
+struct switchtec_user {
+	struct switchtec_dev *stdev;
+
+	enum {
+		MRPC_IDLE = 0,
+		MRPC_RUNNING,
+		MRPC_DONE,
+	} state;
+
+	struct completion comp;
+	struct kref kref;
+
+	u32 cmd;
+	u32 return_code;
+	unsigned char data[SWITCHTEC_MRPC_PAYLOAD_SIZE];
+};
+
+static void stuser_free(struct kref *kref)
+{
+	struct switchtec_user *stuser;
+	stuser = container_of(kref, struct switchtec_user, kref);
+
+	dev_dbg(stdev_dev(stuser->stdev), "%s\n", __func__);
+
+	kfree(stuser);
+}
+
+static void stuser_init(struct switchtec_user *stuser,
+			struct switchtec_dev *stdev)
+{
+	stuser->stdev = stdev;
+	init_completion(&stuser->comp);
+	kref_init(&stuser->kref);
+
+	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
+}
+
+static void stuser_put(struct switchtec_user *stuser)
+{
+	kref_put(&stuser->kref, stuser_free);
+}
+
 static int switchtec_dev_open(struct inode *inode, struct file *filp)
 {
-	return -ENXIO;
+	struct device *dev;
+	struct switchtec_dev *stdev;
+	struct switchtec_user *stuser;
+	int rc;
+
+	dev = switchtec_dev_find(inode->i_rdev);
+	if (!dev)
+		return -ENXIO;
+
+	device_lock(dev);
+	stdev = dev_get_drvdata(dev);
+	if (!stdev) {
+		rc = -ENXIO;
+		goto err_unlock_exit;
+	}
+
+	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
+	kref_get(&stdev->kref);
+
+	stuser = kzalloc(sizeof(*stuser), GFP_KERNEL);
+	if (!stuser) {
+		rc = -ENOMEM;
+		goto err_unlock_exit;
+	}
+
+	stuser_init(stuser, stdev);
+	filp->private_data = stuser;
+
+	device_unlock(dev);
+	nonseekable_open(inode, filp);
+	return 0;
+
+err_unlock_exit:
+	device_unlock(dev);
+	put_device(dev);
+	return rc;
 }
 
 static int switchtec_dev_release(struct inode *inode, struct file *filp)
 {
-	return -ENXIO;
+	struct switchtec_user *stuser = filp->private_data;
+	struct switchtec_dev *stdev = stuser->stdev;
+	struct device *dev = stdev_dev(stdev);
+
+	dev_dbg(dev, "%s\n", __func__);
+
+	stuser_put(stuser);
+	stdev_put(stdev);
+	put_device(dev);
+
+	return 0;
 }
 
 static ssize_t switchtec_dev_write(struct file *filp, const char __user *data,
