@@ -35,12 +35,19 @@ enum {
 };
 
 struct mrpc_regs {
-	u8 input_data[1024];
-	u8 output_data[1024];
+	u8 input_data[SWITCHTEC_MRPC_PAYLOAD_SIZE];
+	u8 output_data[SWITCHTEC_MRPC_PAYLOAD_SIZE];
 	u32 cmd;
 	u32 status;
 	u32 ret_value;
 } __packed;
+
+enum mrpc_status {
+	SWITCHTEC_MRPC_STATUS_INPROGRESS = 1,
+	SWITCHTEC_MRPC_STATUS_DONE = 2,
+	SWITCHTEC_MRPC_STATUS_ERROR = 0xFF,
+	SWITCHTEC_MRPC_STATUS_INTERRUPTED = 0x100,
+};
 
 struct ntb_info_regs {
 	u8  partition_count;
@@ -93,6 +100,11 @@ struct switchtec_dev {
 	struct mrpc_regs __iomem *mmio_mrpc;
 	struct ntb_info_regs __iomem *mmio_ntb;
 	struct part_cfg_regs __iomem *mmio_part_cfg;
+
+	struct list_head mrpc_queue;
+	struct mutex mrpc_mutex;
+	int mrpc_busy;
+	struct work_struct mrpc_work;
 };
 
 #define stdev_pdev(stdev) ((stdev)->pdev)

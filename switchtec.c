@@ -18,6 +18,7 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/fs.h>
+#include <linux/uaccess.h>
 
 MODULE_DESCRIPTION("Microsemi Switchtec(tm) PCI-E Management Driver");
 MODULE_VERSION("0.1");
@@ -27,33 +28,6 @@ MODULE_AUTHOR("Microsemi Corporation");
 static int switchtec_major;
 static struct class *switchtec_class;
 static DEFINE_IDA(switchtec_minor_ida);
-
-static void stdev_free(struct kref *kref)
-{
-	struct switchtec_dev *stdev;
-	stdev = container_of(kref, struct switchtec_dev, kref);
-
-	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
-
-	kfree(stdev);
-}
-
-static void stdev_init(struct switchtec_dev *stdev,
-		       struct pci_dev *pdev)
-{
-	stdev->pdev = pdev;
-	kref_init(&stdev->kref);
-}
-
-static void stdev_put(struct switchtec_dev *stdev)
-{
-	kref_put(&stdev->kref, stdev_free);
-}
-
-static int stdev_is_alive(struct switchtec_dev *stdev)
-{
-	return stdev->mmio != NULL;
-}
 
 static int __match_devt(struct device *dev, const void *data)
 {
@@ -72,15 +46,19 @@ struct switchtec_user {
 
 	enum {
 		MRPC_IDLE = 0,
+		MRPC_QUEUED,
 		MRPC_RUNNING,
 		MRPC_DONE,
 	} state;
 
 	struct completion comp;
 	struct kref kref;
+	struct list_head list;
 
 	u32 cmd;
+	u32 status;
 	u32 return_code;
+	size_t data_len;
 	unsigned char data[SWITCHTEC_MRPC_PAYLOAD_SIZE];
 };
 
@@ -89,8 +67,6 @@ static void stuser_free(struct kref *kref)
 	struct switchtec_user *stuser;
 	stuser = container_of(kref, struct switchtec_user, kref);
 
-	dev_dbg(stdev_dev(stuser->stdev), "%s\n", __func__);
-
 	kfree(stuser);
 }
 
@@ -98,15 +74,136 @@ static void stuser_init(struct switchtec_user *stuser,
 			struct switchtec_dev *stdev)
 {
 	stuser->stdev = stdev;
-	init_completion(&stuser->comp);
 	kref_init(&stuser->kref);
-
-	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
+	INIT_LIST_HEAD(&stuser->list);
 }
 
 static void stuser_put(struct switchtec_user *stuser)
 {
 	kref_put(&stuser->kref, stuser_free);
+}
+
+static void mrpc_cmd_submit(struct switchtec_dev *stdev)
+{
+	/* requires the mrpc_mutex to already be held when called */
+
+	struct switchtec_user *stuser;
+
+	if (stdev->mrpc_busy)
+		return;
+
+	if (list_empty(&stdev->mrpc_queue))
+		return;
+
+	stuser = list_entry(stdev->mrpc_queue.next, struct switchtec_user,
+			    list);
+
+	stuser->state = MRPC_RUNNING;
+	stdev->mrpc_busy = 1;
+	memcpy_toio(&stdev->mmio_mrpc->input_data,
+		    stuser->data, stuser->data_len);
+	iowrite32(stuser->cmd, &stdev->mmio_mrpc->cmd);
+}
+
+static void mrpc_queue_cmd(struct switchtec_user *stuser)
+{
+	/* requires the mrpc_mutex to already be held when called */
+
+	struct switchtec_dev *stdev = stuser->stdev;
+
+	kref_get(&stuser->kref);
+	stuser->state = MRPC_QUEUED;
+	init_completion(&stuser->comp);
+	list_add_tail(&stuser->list, &stdev->mrpc_queue);
+
+	mrpc_cmd_submit(stdev);
+}
+
+static void mrpc_complete_cmd(struct switchtec_dev *stdev)
+{
+	/* requires the mrpc_mutex to already be held when called */
+	struct switchtec_user *stuser;
+
+	BUG_ON(list_empty(&stdev->mrpc_queue));
+
+	stuser = list_entry(stdev->mrpc_queue.next, struct switchtec_user,
+			    list);
+
+	stuser->status = ioread32(&stdev->mmio_mrpc->status);
+	if (stuser->status == SWITCHTEC_MRPC_STATUS_INPROGRESS)
+		return;
+
+	stuser->state = MRPC_DONE;
+	stuser->return_code = 0;
+
+	if (stuser->status != SWITCHTEC_MRPC_STATUS_DONE)
+		goto out;
+
+	stuser->return_code = ioread32(&stdev->mmio_mrpc->ret_value);
+	if (stuser->return_code != 0)
+		goto out;
+
+	memcpy_fromio(stuser->data, &stdev->mmio_mrpc->output_data,
+		      sizeof(stuser->data));
+
+out:
+	complete_all(&stuser->comp);
+	list_del_init(&stuser->list);
+	stuser_put(stuser);
+	stdev->mrpc_busy = 0;
+
+	mrpc_cmd_submit(stdev);
+}
+
+static void mrpc_event_work(struct work_struct *work)
+{
+	struct switchtec_dev *stdev;
+	stdev = container_of(work, struct switchtec_dev, mrpc_work);
+
+	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
+
+	mutex_lock(&stdev->mrpc_mutex);
+	mrpc_complete_cmd(stdev);
+	mutex_unlock(&stdev->mrpc_mutex);
+}
+
+static void stdev_free(struct kref *kref)
+{
+	struct switchtec_dev *stdev;
+	struct switchtec_user *stuser, *temp;
+
+	stdev = container_of(kref, struct switchtec_dev, kref);
+
+	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
+
+	list_for_each_entry_safe(stuser, temp, &stdev->mrpc_queue, list) {
+		stuser->status = SWITCHTEC_MRPC_STATUS_INTERRUPTED;
+		list_del_init(&stuser->list);
+		stuser_put(stuser);
+	}
+
+	kfree(stdev);
+}
+
+static void stdev_init(struct switchtec_dev *stdev,
+		       struct pci_dev *pdev)
+{
+	stdev->pdev = pdev;
+	kref_init(&stdev->kref);
+	INIT_LIST_HEAD(&stdev->mrpc_queue);
+	mutex_init(&stdev->mrpc_mutex);
+	stdev->mrpc_busy = 0;
+	INIT_WORK(&stdev->mrpc_work, mrpc_event_work);
+}
+
+static void stdev_put(struct switchtec_dev *stdev)
+{
+	kref_put(&stdev->kref, stdev_free);
+}
+
+static int stdev_is_alive(struct switchtec_dev *stdev)
+{
+	return stdev->mmio != NULL;
 }
 
 static int switchtec_dev_open(struct inode *inode, struct file *filp)
@@ -169,11 +266,46 @@ static ssize_t switchtec_dev_write(struct file *filp, const char __user *data,
 {
 	struct switchtec_user *stuser = filp->private_data;
 	struct switchtec_dev *stdev = stuser->stdev;
+	int rc;
 
 	if (!stdev_is_alive(stdev))
 		return -ENXIO;
 
-	return 0;
+	if (size < sizeof(stuser->cmd) ||
+	    size >= sizeof(stuser->cmd) + SWITCHTEC_MRPC_PAYLOAD_SIZE)
+		return -EINVAL;
+
+	if (mutex_lock_interruptible(&stdev->mrpc_mutex))
+		return -EINTR;
+
+	if (stuser->state != MRPC_IDLE) {
+		rc = -EBADE;
+		goto out;
+	}
+
+	rc = copy_from_user(&stuser->cmd, data, sizeof(stuser->cmd));
+	if (rc) {
+		rc = -EFAULT;
+		goto out;
+	}
+
+	data += sizeof(stuser->cmd);
+	rc = copy_from_user(&stuser->data, data, size - sizeof(stuser->cmd));
+	if (rc) {
+		rc = -EFAULT;
+		goto out;
+	}
+
+	stuser->data_len = size - sizeof(stuser->cmd);
+
+	mrpc_queue_cmd(stuser);
+
+	rc = size;
+
+out:
+	mutex_unlock(&stdev->mrpc_mutex);
+
+	return rc;
 }
 
 static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
@@ -181,11 +313,55 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 {
 	struct switchtec_user *stuser = filp->private_data;
 	struct switchtec_dev *stdev = stuser->stdev;
+	int rc;
 
 	if (!stdev_is_alive(stdev))
 		return -ENXIO;
 
-	return 0;
+	if (size < sizeof(stuser->cmd) ||
+	    size >= sizeof(stuser->cmd) + SWITCHTEC_MRPC_PAYLOAD_SIZE)
+		return -EINVAL;
+
+	if (stuser->state == MRPC_IDLE)
+		return -EBADE;
+
+	rc = wait_for_completion_interruptible(&stuser->comp);
+	if (rc < 0)
+		return rc;
+
+	if (mutex_lock_interruptible(&stdev->mrpc_mutex))
+		return -EINTR;
+
+	if (stuser->state != MRPC_DONE)
+		return -EBADE;
+
+	rc = copy_to_user(data, &stuser->return_code,
+			  sizeof(stuser->return_code));
+	if (rc) {
+		rc = -EFAULT;
+		goto out;
+	}
+
+	data += sizeof(stuser->return_code);
+	rc = copy_to_user(data, &stuser->data, size - sizeof(stuser->return_code));
+	if (rc) {
+		rc = -EFAULT;
+		goto out;
+	}
+
+	stuser->state = MRPC_IDLE;
+
+	if (stuser->status == SWITCHTEC_MRPC_STATUS_DONE)
+		rc = size;
+	else if (stuser->status == SWITCHTEC_MRPC_STATUS_INTERRUPTED)
+		rc = -ENXIO;
+	else
+		rc = -EBADMSG;
+
+out:
+	mutex_unlock(&stdev->mrpc_mutex);
+
+	return rc;
 }
 
 static const struct file_operations switchtec_fops = {
@@ -235,11 +411,6 @@ static void switchtec_unregister_dev(struct switchtec_dev *stdev)
 	put_device(stdev_dev(stdev));
 }
 
-static void switchtec_mrpc_cmd_done(struct switchtec_dev *stdev)
-{
-
-}
-
 static irqreturn_t switchtec_event_isr(int irq, void *dev)
 {
 	struct switchtec_dev *stdev = dev;
@@ -248,9 +419,10 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 	summary = ioread32(&stdev->mmio_part_cfg->part_event_summary);
 
 	if (summary & SWITCHTEC_PART_CFG_EVENT_MRPC_CMP)
-		switchtec_mrpc_cmd_done(stdev);
-	else
+		schedule_work(&stdev->mrpc_work);
+        else
 		dev_dbg(stdev_dev(stdev), "unknown event: %x\n", summary);
+
 
 	return IRQ_HANDLED;
 }
@@ -276,6 +448,8 @@ static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
 		goto err_msix_enable;
 	}
 
+	stdev->event_irq = ioread32(&stdev->mmio_part_cfg->vep_vector_number);
+
 	rc = request_irq(stdev->msix[stdev->event_irq].vector,
 			 switchtec_event_isr, 0,
 			 "switchtec_event_isr", stdev);
@@ -283,7 +457,8 @@ static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
 	if (rc)
 		goto err_msix_request;
 
-	dev_dbg(stdev_pdev_dev(stdev), "Using msix interrupts\n");
+	dev_dbg(stdev_pdev_dev(stdev), "Using msix interrupts: event_irq=%d\n",
+		stdev->event_irq);
 	return 0;
 
 err_msix_request:
@@ -307,17 +482,21 @@ static int switchtec_init_msi_isr(struct switchtec_dev *stdev)
 
 	stdev->msix = NULL;
 
+
 	/* Try to set up msi irq */
 	rc = pci_enable_msi_range(pdev, 1, 4);
 	if (rc < 0)
 		goto err_msi_enable;
+
+	stdev->event_irq = ioread32(&stdev->mmio_part_cfg->vep_vector_number);
 
 	rc = request_irq(pdev->irq + stdev->event_irq, switchtec_event_isr, 0,
 			 "switchtec_event_isr", stdev);
 	if (rc)
 		goto err_msi_request;
 
-	dev_dbg(stdev_pdev_dev(stdev), "Using msi interrupts\n");
+	dev_dbg(stdev_pdev_dev(stdev), "Using msi interrupts: event_irq=%d\n",
+		stdev->event_irq);
 	return 0;
 
 err_msi_request:
@@ -369,6 +548,8 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	if (rc)
 		goto err_pci_regions;
 
+	pci_set_master(pdev);
+
 	stdev->mmio = pci_iomap(pdev, 0, 0);
 	if (!stdev->mmio) {
 		rc = -EIO;
@@ -380,8 +561,6 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	partition = ioread8(&stdev->mmio_ntb->partition_id);
 	stdev->mmio_part_cfg = stdev->mmio + SWITCHTEC_GAS_PART_CFG_OFFSET +
 		sizeof(struct part_cfg_regs) * partition;
-
-	stdev->event_irq = ioread32(&stdev->mmio_part_cfg->vep_vector_number);
 
 	return 0;
 
