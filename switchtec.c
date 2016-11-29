@@ -50,6 +50,11 @@ static void stdev_put(struct switchtec_dev *stdev)
 	kref_put(&stdev->kref, stdev_free);
 }
 
+static int stdev_is_alive(struct switchtec_dev *stdev)
+{
+	return stdev->mmio != NULL;
+}
+
 static int __match_devt(struct device *dev, const void *data)
 {
 	const dev_t *devt = data;
@@ -162,13 +167,25 @@ static int switchtec_dev_release(struct inode *inode, struct file *filp)
 static ssize_t switchtec_dev_write(struct file *filp, const char __user *data,
 				   size_t size, loff_t *off)
 {
-	return -ENXIO;
+	struct switchtec_user *stuser = filp->private_data;
+	struct switchtec_dev *stdev = stuser->stdev;
+
+	if (!stdev_is_alive(stdev))
+		return -ENXIO;
+
+	return 0;
 }
 
 static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 				  size_t size, loff_t *off)
 {
-	return -ENXIO;
+	struct switchtec_user *stuser = filp->private_data;
+	struct switchtec_dev *stdev = stuser->stdev;
+
+	if (!stdev_is_alive(stdev))
+		return -ENXIO;
+
+	return 0;
 }
 
 static const struct file_operations switchtec_fops = {
