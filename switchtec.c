@@ -109,6 +109,9 @@ static void mrpc_cmd_submit(struct switchtec_dev *stdev)
 	stuser->status = ioread32(&stdev->mmio_mrpc->status);
 	if (stuser->status != SWITCHTEC_MRPC_STATUS_INPROGRESS)
 		mrpc_complete_cmd(stdev);
+
+	schedule_delayed_work(&stdev->mrpc_timeout,
+			      msecs_to_jiffies(500));
 }
 
 static void mrpc_queue_cmd(struct switchtec_user *stuser)
@@ -130,7 +133,8 @@ static void mrpc_complete_cmd(struct switchtec_dev *stdev)
 	/* requires the mrpc_mutex to already be held when called */
 	struct switchtec_user *stuser;
 
-	BUG_ON(list_empty(&stdev->mrpc_queue));
+	if (list_empty(&stdev->mrpc_queue))
+		return;
 
 	stuser = list_entry(stdev->mrpc_queue.next, struct switchtec_user,
 			    list);
@@ -166,10 +170,33 @@ static void mrpc_event_work(struct work_struct *work)
 	struct switchtec_dev *stdev;
 	stdev = container_of(work, struct switchtec_dev, mrpc_work);
 
+	mutex_lock(&stdev->mrpc_mutex);
+	cancel_delayed_work(&stdev->mrpc_timeout);
+	mrpc_complete_cmd(stdev);
+	mutex_unlock(&stdev->mrpc_mutex);
+}
+
+static void mrpc_timeout_work(struct work_struct *work)
+{
+	struct switchtec_dev *stdev;
+	u32 status;
+
+	stdev = container_of(work, struct switchtec_dev, mrpc_timeout.work);
+
 	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
 
 	mutex_lock(&stdev->mrpc_mutex);
+
+	status = ioread32(&stdev->mmio_mrpc->status);
+	if (status == SWITCHTEC_MRPC_STATUS_INPROGRESS) {
+		schedule_delayed_work(&stdev->mrpc_timeout,
+				      msecs_to_jiffies(500));
+		goto out;
+	}
+
 	mrpc_complete_cmd(stdev);
+
+out:
 	mutex_unlock(&stdev->mrpc_mutex);
 }
 
@@ -200,6 +227,7 @@ static void stdev_init(struct switchtec_dev *stdev,
 	mutex_init(&stdev->mrpc_mutex);
 	stdev->mrpc_busy = 0;
 	INIT_WORK(&stdev->mrpc_work, mrpc_event_work);
+	INIT_DELAYED_WORK(&stdev->mrpc_timeout, mrpc_timeout_work);
 }
 
 static void stdev_put(struct switchtec_dev *stdev)

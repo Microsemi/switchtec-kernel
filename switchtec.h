@@ -105,6 +105,7 @@ struct switchtec_dev {
 	struct mutex mrpc_mutex;
 	int mrpc_busy;
 	struct work_struct mrpc_work;
+	struct delayed_work mrpc_timeout;
 };
 
 #define stdev_pdev(stdev) ((stdev)->pdev)
