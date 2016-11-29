@@ -28,6 +28,28 @@ static int switchtec_major;
 static struct class *switchtec_class;
 static DEFINE_IDA(switchtec_minor_ida);
 
+static void stdev_free(struct kref *kref)
+{
+	struct switchtec_dev *stdev;
+	stdev = container_of(kref, struct switchtec_dev, kref);
+
+	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
+
+	kfree(stdev);
+}
+
+static void stdev_init(struct switchtec_dev *stdev,
+		       struct pci_dev *pdev)
+{
+	stdev->pdev = pdev;
+	kref_init(&stdev->kref);
+}
+
+static void stdev_put(struct switchtec_dev *stdev)
+{
+	kref_put(&stdev->kref, stdev_free);
+}
+
 static int switchtec_dev_open(struct inode *inode, struct file *filp)
 {
 	return -ENXIO;
@@ -261,17 +283,12 @@ static void switchtec_deinit_pci(struct switchtec_dev *stdev)
 	struct pci_dev *pdev = stdev_pdev(stdev);
 
 	pci_iounmap(pdev, stdev->mmio);
+	stdev->mmio = NULL;
 
 	pci_clear_master(pdev);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
-}
-
-static inline void stdev_init_struct(struct switchtec_dev *stdev,
-				     struct pci_dev *pdev)
-{
-	stdev->pdev = pdev;
 }
 
 static int switchtec_pci_probe(struct pci_dev *pdev,
@@ -288,7 +305,7 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 		goto err_stdev;
 	}
 
-	stdev_init_struct(stdev, pdev);
+	stdev_init(stdev, pdev);
 
 	rc = switchtec_init_pci(stdev, pdev);
 	if (rc)
@@ -313,7 +330,7 @@ err_register_dev:
 err_init_isr:
 	switchtec_deinit_pci(stdev);
 err_init_pci:
-	kfree(stdev);
+	stdev_put(stdev);
 err_stdev:
 	return rc;
 }
@@ -325,7 +342,7 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 	switchtec_unregister_dev(stdev);
 	switchtec_deinit_isr(stdev);
 	switchtec_deinit_pci(stdev);
-	kfree(stdev);
+	stdev_put(stdev);
 }
 
 static const struct pci_device_id switchtec_pci_tbl[] = {

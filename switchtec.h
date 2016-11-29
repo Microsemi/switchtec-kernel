@@ -83,6 +83,7 @@ struct switchtec_dev {
 	struct pci_dev *pdev;
 	struct msix_entry *msix;
 	struct device *dev;
+	struct kref kref;
 
 	unsigned int event_irq;
 
