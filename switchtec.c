@@ -83,6 +83,8 @@ static void stuser_put(struct switchtec_user *stuser)
 	kref_put(&stuser->kref, stuser_free);
 }
 
+static void mrpc_complete_cmd(struct switchtec_dev *stdev);
+
 static void mrpc_cmd_submit(struct switchtec_dev *stdev)
 {
 	/* requires the mrpc_mutex to already be held when called */
@@ -103,6 +105,10 @@ static void mrpc_cmd_submit(struct switchtec_dev *stdev)
 	memcpy_toio(&stdev->mmio_mrpc->input_data,
 		    stuser->data, stuser->data_len);
 	iowrite32(stuser->cmd, &stdev->mmio_mrpc->cmd);
+
+	stuser->status = ioread32(&stdev->mmio_mrpc->status);
+	if (stuser->status != SWITCHTEC_MRPC_STATUS_INPROGRESS)
+		mrpc_complete_cmd(stdev);
 }
 
 static void mrpc_queue_cmd(struct switchtec_user *stuser)
