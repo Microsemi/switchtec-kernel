@@ -19,6 +19,7 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/uaccess.h>
+#include <linux/poll.h>
 
 MODULE_DESCRIPTION("Microsemi Switchtec(tm) PCI-E Management Driver");
 MODULE_VERSION("0.1");
@@ -76,6 +77,7 @@ static void stuser_init(struct switchtec_user *stuser,
 	stuser->stdev = stdev;
 	kref_init(&stuser->kref);
 	INIT_LIST_HEAD(&stuser->list);
+	init_completion(&stuser->comp);
 }
 
 static void stuser_put(struct switchtec_user *stuser)
@@ -403,12 +405,31 @@ out:
 	return rc;
 }
 
+static unsigned int switchtec_dev_poll(struct file *filp, poll_table *wait)
+{
+	struct switchtec_user *stuser = filp->private_data;
+	struct switchtec_dev *stdev = stuser->stdev;
+
+	poll_wait(filp, &stuser->comp.wait, wait);
+
+	if (!stdev_is_alive(stdev))
+		return POLLERR;
+
+	if (stuser->state == MRPC_IDLE)
+		return POLLERR;
+	else if (try_wait_for_completion(&stuser->comp))
+		return POLLIN | POLLRDNORM;
+
+	return 0;
+}
+
 static const struct file_operations switchtec_fops = {
 	.owner = THIS_MODULE,
 	.open = switchtec_dev_open,
 	.release = switchtec_dev_release,
 	.write = switchtec_dev_write,
 	.read = switchtec_dev_read,
+	.poll = switchtec_dev_poll,
 };
 
 static int switchtec_register_dev(struct switchtec_dev *stdev)

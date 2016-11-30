@@ -21,12 +21,16 @@ import struct
 import unittest
 import fcntl
 import time
+import select
 
 class SwitchTec(object):
     def __init__(self, path, verbose=False):
         super(SwitchTec, self).__init__()
         self.fd = os.open(path, os.O_RDWR)
         self.verbose = verbose
+
+        self.poll_obj = select.poll()
+        self.poll_obj.register(self.fd, select.POLLIN | select.POLLERR)
 
     def _vprint(self, *args, **kwargs):
         if not self.verbose:
@@ -74,6 +78,10 @@ class SwitchTec(object):
             flags &= ~os.O_NONBLOCK
 
         fcntl.fcntl(self.fd, fcntl.F_SETFL, flags)
+
+    def poll(self, timeout=1000):
+        ret = self.poll_obj.poll(timeout)
+        return len(ret) > 0
 
 class SwitchTecTests(unittest.TestCase):
     st = None
@@ -129,6 +137,24 @@ class SwitchTecTests(unittest.TestCase):
                     break
                 except OSError:
                     continue
+
+        finally:
+            self.st.set_nonblocking(False)
+
+    def test_poll(self):
+        try:
+            self.st.set_nonblocking(True)
+            self.st.start_cmd(65, b"\x11\x22")
+
+            with self.assertRaises(OSError):
+                self.st.read_resp(1)
+
+            while not self.st.poll():
+                pass
+
+            ret, data_out = self.st.read_resp(2)
+            self.assertEqual(ret, 0)
+            self.assertEqual(data_out, b"\xEE\xDD")
 
         finally:
             self.st.set_nonblocking(False)
