@@ -359,9 +359,14 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 	if (stuser->state == MRPC_IDLE)
 		return -EBADE;
 
-	rc = wait_for_completion_interruptible(&stuser->comp);
-	if (rc < 0)
-		return rc;
+	if (filp->f_flags & O_NONBLOCK) {
+		if (!try_wait_for_completion(&stuser->comp))
+			return -EAGAIN;
+	} else {
+		rc = wait_for_completion_interruptible(&stuser->comp);
+		if (rc < 0)
+			return rc;
+	}
 
 	if (mutex_lock_interruptible(&stdev->mrpc_mutex))
 		return -EINTR;

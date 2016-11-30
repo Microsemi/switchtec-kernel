@@ -19,6 +19,8 @@ import sys
 import os
 import struct
 import unittest
+import fcntl
+import time
 
 class SwitchTec(object):
     def __init__(self, path, verbose=False):
@@ -42,7 +44,6 @@ class SwitchTec(object):
             self._vprint("  Error Occured:", e)
             raise
 
-
     def read_resp(self, outdata_len=0):
         try:
             data = os.read(self.fd, 4+outdata_len)
@@ -64,6 +65,15 @@ class SwitchTec(object):
 
         return self.cmd(65, payload, len(payload))
 
+    def set_nonblocking(self, enabled=True):
+        flags = fcntl.fcntl(self.fd, fcntl.F_GETFL, 0);
+
+        if enabled:
+            flags |= os.O_NONBLOCK
+        else:
+            flags &= ~os.O_NONBLOCK
+
+        fcntl.fcntl(self.fd, fcntl.F_SETFL, flags)
 
 class SwitchTecTests(unittest.TestCase):
     st = None
@@ -101,6 +111,27 @@ class SwitchTecTests(unittest.TestCase):
     def test_read_without_write(self):
         with self.assertRaises(OSError):
             self.st.read_resp(1)
+
+    def test_nonblocking(self):
+        try:
+            self.st.set_nonblocking(True)
+            self.st.start_cmd(65, b"\x5A")
+
+            with self.assertRaises(OSError):
+                self.st.read_resp(1)
+
+            while True:
+                time.sleep(0.001)
+                try:
+                    ret, data_out = self.st.read_resp(1)
+                    self.assertEqual(ret, 0)
+                    self.assertEqual(data_out, b"\xA5")
+                    break
+                except OSError:
+                    continue
+
+        finally:
+            self.st.set_nonblocking(False)
 
 if __name__ == "__main__":
     import argparse
