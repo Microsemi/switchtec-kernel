@@ -172,6 +172,8 @@ static void mrpc_event_work(struct work_struct *work)
 	struct switchtec_dev *stdev;
 	stdev = container_of(work, struct switchtec_dev, mrpc_work);
 
+	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
+
 	mutex_lock(&stdev->mrpc_mutex);
 	cancel_delayed_work(&stdev->mrpc_timeout);
 	mrpc_complete_cmd(stdev);
@@ -202,20 +204,66 @@ out:
 	mutex_unlock(&stdev->mrpc_mutex);
 }
 
+static int switchtec_register_dev(struct switchtec_dev *stdev)
+{
+	int rc;
+	int minor;
+	struct device *dev;
+	dev_t devt;
+
+	minor = ida_simple_get(&switchtec_minor_ida, 0, 0,
+			       GFP_KERNEL);
+	if (minor < 0)
+		return minor;
+
+	devt = MKDEV(switchtec_major, minor);
+	dev = device_create(switchtec_class, &stdev->pdev->dev,
+			    devt, stdev, "switchtec%d", minor);
+	if (IS_ERR(dev)) {
+		rc = PTR_ERR(dev);
+		goto err_create;
+	}
+
+	stdev->dev = dev;
+
+	return 0;
+
+
+err_create:
+	ida_simple_remove(&switchtec_minor_ida, minor);
+
+	return rc;
+}
+
+static void switchtec_unregister_dev(struct switchtec_dev *stdev)
+{
+	device_unregister(stdev_dev(stdev));
+	ida_simple_remove(&switchtec_minor_ida, MINOR(stdev_dev(stdev)->devt));
+}
+
 static void stdev_free(struct kref *kref)
 {
 	struct switchtec_dev *stdev;
 	struct switchtec_user *stuser, *temp;
 
 	stdev = container_of(kref, struct switchtec_dev, kref);
+	get_device(stdev_dev(stdev));
 
 	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
+
+	cancel_delayed_work(&stdev->mrpc_timeout);
+	mutex_lock(&stdev->mrpc_mutex);
 
 	list_for_each_entry_safe(stuser, temp, &stdev->mrpc_queue, list) {
 		stuser->status = SWITCHTEC_MRPC_STATUS_INTERRUPTED;
 		list_del_init(&stuser->list);
 		stuser_put(stuser);
 	}
+
+	mutex_unlock(&stdev->mrpc_mutex);
+
+	switchtec_unregister_dev(stdev);
+	put_device(stdev_dev(stdev));
 
 	kfree(stdev);
 }
@@ -432,45 +480,6 @@ static const struct file_operations switchtec_fops = {
 	.poll = switchtec_dev_poll,
 };
 
-static int switchtec_register_dev(struct switchtec_dev *stdev)
-{
-	int rc;
-	int minor;
-	struct device *dev;
-	dev_t devt;
-
-	minor = ida_simple_get(&switchtec_minor_ida, 0, 0,
-			       GFP_KERNEL);
-	if (minor < 0)
-		return minor;
-
-	devt = MKDEV(switchtec_major, minor);
-	dev = device_create(switchtec_class, &stdev->pdev->dev,
-			    devt, stdev, "switchtec%d", minor);
-	if (IS_ERR(dev)) {
-		rc = PTR_ERR(dev);
-		goto err_create;
-	}
-
-	stdev->dev = dev;
-
-	return 0;
-
-
-err_create:
-	ida_simple_remove(&switchtec_minor_ida, minor);
-
-	return rc;
-}
-
-static void switchtec_unregister_dev(struct switchtec_dev *stdev)
-{
-	get_device(stdev_dev(stdev));
-	device_unregister(stdev_dev(stdev));
-	ida_simple_remove(&switchtec_minor_ida, MINOR(stdev_dev(stdev)->devt));
-	put_device(stdev_dev(stdev));
-}
-
 static irqreturn_t switchtec_event_isr(int irq, void *dev)
 {
 	struct switchtec_dev *stdev = dev;
@@ -625,6 +634,7 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	return 0;
 
 err_iomap:
+	pci_clear_master(pdev);
 	pci_release_regions(pdev);
 err_pci_regions:
 	pci_disable_device(pdev);
@@ -694,7 +704,6 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 {
 	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
 
-	switchtec_unregister_dev(stdev);
 	switchtec_deinit_isr(stdev);
 	switchtec_deinit_pci(stdev);
 	stdev_put(stdev);
