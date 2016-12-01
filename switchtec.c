@@ -45,7 +45,7 @@ static struct device *switchtec_dev_find(dev_t dev_t)
 struct switchtec_user {
 	struct switchtec_dev *stdev;
 
-	enum {
+	enum mrpc_state {
 		MRPC_IDLE = 0,
 		MRPC_QUEUED,
 		MRPC_RUNNING,
@@ -85,7 +85,24 @@ static void stuser_put(struct switchtec_user *stuser)
 	kref_put(&stuser->kref, stuser_free);
 }
 
+static void stuser_set_state(struct switchtec_user *stuser, enum mrpc_state state)
+{
+	const char * const state_names[] = {
+		[MRPC_IDLE] = "IDLE",
+		[MRPC_QUEUED] = "QUEUED",
+		[MRPC_RUNNING] = "RUNNING",
+		[MRPC_DONE] = "DONE",
+	};
+
+	stuser->state = state;
+
+	dev_dbg(stdev_dev(stuser->stdev), "stuser state %p -> %s",
+		stuser, state_names[state]);
+}
+
+
 static void mrpc_complete_cmd(struct switchtec_dev *stdev);
+
 
 static void mrpc_cmd_submit(struct switchtec_dev *stdev)
 {
@@ -102,7 +119,7 @@ static void mrpc_cmd_submit(struct switchtec_dev *stdev)
 	stuser = list_entry(stdev->mrpc_queue.next, struct switchtec_user,
 			    list);
 
-	stuser->state = MRPC_RUNNING;
+	stuser_set_state(stuser, MRPC_RUNNING);
 	stdev->mrpc_busy = 1;
 	memcpy_toio(&stdev->mmio_mrpc->input_data,
 		    stuser->data, stuser->data_len);
@@ -123,7 +140,7 @@ static void mrpc_queue_cmd(struct switchtec_user *stuser)
 	struct switchtec_dev *stdev = stuser->stdev;
 
 	kref_get(&stuser->kref);
-	stuser->state = MRPC_QUEUED;
+	stuser_set_state(stuser, MRPC_QUEUED);
 	init_completion(&stuser->comp);
 	list_add_tail(&stuser->list, &stdev->mrpc_queue);
 
@@ -145,7 +162,7 @@ static void mrpc_complete_cmd(struct switchtec_dev *stdev)
 	if (stuser->status == SWITCHTEC_MRPC_STATUS_INPROGRESS)
 		return;
 
-	stuser->state = MRPC_DONE;
+	stuser_set_state(stuser, MRPC_DONE);
 	stuser->return_code = 0;
 
 	if (stuser->status != SWITCHTEC_MRPC_STATUS_DONE)
@@ -308,7 +325,6 @@ static int switchtec_dev_open(struct inode *inode, struct file *filp)
 		goto err_unlock_exit;
 	}
 
-	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
 	kref_get(&stdev->kref);
 
 	stuser = kzalloc(sizeof(*stuser), GFP_KERNEL);
@@ -319,6 +335,8 @@ static int switchtec_dev_open(struct inode *inode, struct file *filp)
 
 	stuser_init(stuser, stdev);
 	filp->private_data = stuser;
+
+	dev_dbg(stdev_dev(stdev), "%s: %p\n", __func__, stuser);
 
 	device_unlock(dev);
 	nonseekable_open(inode, filp);
@@ -336,7 +354,7 @@ static int switchtec_dev_release(struct inode *inode, struct file *filp)
 	struct switchtec_dev *stdev = stuser->stdev;
 	struct device *dev = stdev_dev(stdev);
 
-	dev_dbg(dev, "%s\n", __func__);
+	dev_dbg(dev, "%s: %p\n", __func__, stuser);
 
 	stuser_put(stuser);
 	stdev_put(stdev);
@@ -438,7 +456,7 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 		goto out;
 	}
 
-	stuser->state = MRPC_IDLE;
+	stuser_set_state(stuser, MRPC_IDLE);
 
 	if (stuser->status == SWITCHTEC_MRPC_STATUS_DONE)
 		rc = size;
