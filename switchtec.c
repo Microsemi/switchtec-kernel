@@ -709,15 +709,37 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 	stdev_put(stdev);
 }
 
+#define SWITCHTEC_PCI_DEVICE(device_id) \
+	{ \
+		.vendor     = MICROSEMI_VENDOR_ID, \
+		.device     = device_id, \
+		.subvendor  = PCI_ANY_ID, \
+		.subdevice  = PCI_ANY_ID, \
+		.class      = MICROSEMI_MGMT_CLASSCODE, \
+		.class_mask = 0xFFFFFFFF, \
+	}, \
+	{ \
+		.vendor     = MICROSEMI_VENDOR_ID, \
+		.device     = device_id, \
+		.subvendor  = PCI_ANY_ID, \
+		.subdevice  = PCI_ANY_ID, \
+		.class      = MICROSEMI_NTB_CLASSCODE, \
+		.class_mask = 0xFFFFFFFF, \
+	}
+
+
 static const struct pci_device_id switchtec_pci_tbl[] = {
-	{
-		.vendor     = MICROSEMI,
-		.device     = MICROSEMI_PSX_PM8543,
-		.subvendor  = PCI_ANY_ID,
-		.subdevice  = PCI_ANY_ID,
-		.class      = MICROSEMI_NTB_CLASSCODE,
-		.class_mask = MICROSEMI_CLASSCODE_MASK,
-	},
+	SWITCHTEC_PCI_DEVICE(0x8531),  //PFX 24xG3
+	SWITCHTEC_PCI_DEVICE(0x8532),  //PFX 32xG3
+	SWITCHTEC_PCI_DEVICE(0x8533),  //PFX 48xG3
+	SWITCHTEC_PCI_DEVICE(0x8534),  //PFX 64xG3
+	SWITCHTEC_PCI_DEVICE(0x8535),  //PFX 80xG3
+	SWITCHTEC_PCI_DEVICE(0x8536),  //PFX 96xG3
+	SWITCHTEC_PCI_DEVICE(0x8543),  //PSX 48xG3
+	SWITCHTEC_PCI_DEVICE(0x8544),  //PFX 64xG3
+	SWITCHTEC_PCI_DEVICE(0x8545),  //PFX 80xG3
+	SWITCHTEC_PCI_DEVICE(0x8546),  //PFX 96xG3
+	SWITCHTEC_PCI_DEVICE(0x8531),  //PFX 24xG3
 	{0}
 };
 MODULE_DEVICE_TABLE(pci, switchtec_pci_tbl);
