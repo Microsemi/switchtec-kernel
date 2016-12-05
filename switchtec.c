@@ -505,13 +505,12 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 
 	summary = ioread32(&stdev->mmio_part_cfg->part_event_summary);
 
-	if (summary & SWITCHTEC_PART_CFG_EVENT_MRPC_CMP)
+	if (summary & SWITCHTEC_PART_CFG_EVENT_MRPC_CMP) {
 		schedule_work(&stdev->mrpc_work);
-        else
-		dev_dbg(stdev_dev(stdev), "unknown event: %x\n", summary);
+		return IRQ_HANDLED;
+	}
 
-
-	return IRQ_HANDLED;
+	return IRQ_NONE;
 }
 
 static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
