@@ -222,6 +222,45 @@ out:
 	mutex_unlock(&stdev->mrpc_mutex);
 }
 
+static ssize_t device_version_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct switchtec_dev *stdev = dev_get_drvdata(dev);
+	uint32_t ver;
+
+	ver = ioread32(&stdev->mmio_sys_info->device_version);
+
+	return sprintf(buf, "%08x\n", ver);
+}
+static DEVICE_ATTR_RO(device_version);
+
+static ssize_t fw_version_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct switchtec_dev *stdev = dev_get_drvdata(dev);
+	uint32_t ver;
+
+	ver = ioread32(&stdev->mmio_sys_info->firmware_version);
+
+	return sprintf(buf, "%08x\n", ver);
+}
+static DEVICE_ATTR_RO(fw_version);
+
+static struct attribute *switchtec_device_attributes[] = {
+	&dev_attr_device_version.attr,
+	&dev_attr_fw_version.attr,
+	NULL,
+};
+
+static const struct attribute_group switchtec_device_attribute_group = {
+	.attrs = switchtec_device_attributes,
+};
+
+static const struct attribute_group *switchtec_attribute_groups[] = {
+	&switchtec_device_attribute_group,
+	NULL,
+};
+
 static int switchtec_register_dev(struct switchtec_dev *stdev)
 {
 	int rc;
@@ -235,8 +274,10 @@ static int switchtec_register_dev(struct switchtec_dev *stdev)
 		return minor;
 
 	devt = MKDEV(switchtec_major, minor);
-	dev = device_create(switchtec_class, &stdev->pdev->dev,
-			    devt, stdev, "switchtec%d", minor);
+	dev = device_create_with_groups(switchtec_class, &stdev->pdev->dev,
+					devt, stdev,
+					switchtec_attribute_groups,
+					"switchtec%d", minor);
 	if (IS_ERR(dev)) {
 		rc = PTR_ERR(dev);
 		goto err_create;
