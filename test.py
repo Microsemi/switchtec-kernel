@@ -98,7 +98,7 @@ class SwitchtecTests(unittest.TestCase):
 
     def test_invalid(self):
         with self.assertRaises(OSError):
-            self.st.cmd(28)
+            self.st.cmd(62)
         self.test_echo(tries=[b"\x11\xEE"*2])
 
     def test_noevent(self):
