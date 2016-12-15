@@ -1,10 +1,10 @@
 
-Linux SwitchTec Support
+Linux Switchtec Support
 ========================
 
-Microsemi's "SwitchTec" line of PCI switch devices is already
+Microsemi's "Switchtec" line of PCI switch devices is already
 supported by the kernel with standard PCI switch drivers. However, the
-SwitchTec device advertises a special management endpoint which
+Switchtec device advertises a special management endpoint which
 enables some additional functionality. This includes:
 
  * Packet and Byte Counters
@@ -20,7 +20,7 @@ The switchtec kernel module implements this functionality.
 Interface
 =========
 
-The primary means of communicating with the SwitchTec management firmware is
+The primary means of communicating with the Switchtec management firmware is
 through the Memory-mapped Remote Procedure Call (MRPC) interface.
 Commands are submitted to the interface with a 4-byte command
 identifier and up to 1KB of command specific data. The firmware will

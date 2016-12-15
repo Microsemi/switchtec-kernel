@@ -23,9 +23,9 @@ import fcntl
 import time
 import select
 
-class SwitchTec(object):
+class Switchtec(object):
     def __init__(self, path, verbose=False):
-        super(SwitchTec, self).__init__()
+        super(Switchtec, self).__init__()
         self.fd = os.open(path, os.O_RDWR)
         self.verbose = verbose
 
@@ -83,7 +83,7 @@ class SwitchTec(object):
         ret = self.poll_obj.poll(timeout)
         return len(ret) > 0
 
-class SwitchTecTests(unittest.TestCase):
+class SwitchtecTests(unittest.TestCase):
     st = None
 
     def test_echo(self, tries = [b"\xAA"*4, b"\x55"*4]):
@@ -170,6 +170,6 @@ if __name__ == "__main__":
     parser.add_argument('args', nargs=argparse.REMAINDER)
     options = parser.parse_args()
 
-    SwitchTecTests.st = SwitchTec(options.device, verbose=options.verbose)
+    SwitchtecTests.st = Switchtec(options.device, verbose=options.verbose)
 
     unittest.main(argv=sys.argv[0:1] + options.args)
