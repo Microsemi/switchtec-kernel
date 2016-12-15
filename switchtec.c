@@ -374,7 +374,7 @@ static ssize_t switchtec_dev_write(struct file *filp, const char __user *data,
 		return -ENXIO;
 
 	if (size < sizeof(stuser->cmd) ||
-	    size >= sizeof(stuser->cmd) + SWITCHTEC_MRPC_PAYLOAD_SIZE)
+	    size > sizeof(stuser->cmd) + SWITCHTEC_MRPC_PAYLOAD_SIZE)
 		return -EINVAL;
 
 	if (mutex_lock_interruptible(&stdev->mrpc_mutex))
