@@ -14,6 +14,7 @@
  */
 
 #include "switchtec.h"
+#include <linux/switchtec_ioctl.h>
 
 #include <linux/interrupt.h>
 #include <linux/module.h>
@@ -536,6 +537,63 @@ static unsigned int switchtec_dev_poll(struct file *filp, poll_table *wait)
 	return 0;
 }
 
+static int ioctl_fw_info(struct switchtec_dev *stdev,
+			 struct switchtec_ioctl_fw_info __user *uinfo)
+{
+	struct switchtec_ioctl_fw_info info;
+
+	#define fw_info_set(field) \
+		info.field = ioread32(&stdev->mmio_flash_info->field)
+
+	fw_info_set(flash_part_map_upd_idx);
+	fw_info_set(active_main_fw.address);
+	fw_info_set(active_main_fw.build_version);
+	fw_info_set(active_main_fw.build_string);
+	fw_info_set(active_cfg.address);
+	fw_info_set(active_cfg.build_version);
+	fw_info_set(active_cfg.build_string);
+	fw_info_set(inactive_main_fw.address);
+	fw_info_set(inactive_main_fw.build_version);
+	fw_info_set(inactive_main_fw.build_string);
+	fw_info_set(inactive_cfg.address);
+	fw_info_set(inactive_cfg.build_version);
+	fw_info_set(inactive_cfg.build_string);
+
+	/*
+	 * For some reason the hardware gives us these versions
+	 *  with swapped bytes compared to other instances.
+	 */
+	info.active_main_fw.build_version =
+		__swab32(info.active_main_fw.build_version);
+	info.active_cfg.build_version =
+		__swab32(info.active_cfg.build_version);
+	info.inactive_main_fw.build_version =
+		__swab32(info.inactive_main_fw.build_version);
+	info.inactive_cfg.build_version =
+		__swab32(info.inactive_cfg.build_version);
+
+	if (copy_to_user(uinfo, &info, sizeof(info)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static long switchtec_dev_ioctl(struct file *filp, unsigned int cmd,
+				unsigned long arg)
+{
+	struct switchtec_user *stuser = filp->private_data;
+	struct switchtec_dev *stdev = stuser->stdev;
+
+	void __user *argp = (void __user *)arg;
+
+	switch (cmd) {
+	case SWITCHTEC_IOCTL_FW_INFO:
+		return ioctl_fw_info(stdev, argp);
+	default:
+		return -ENOTTY;
+	}
+}
+
 static const struct file_operations switchtec_fops = {
 	.owner = THIS_MODULE,
 	.open = switchtec_dev_open,
@@ -543,6 +601,8 @@ static const struct file_operations switchtec_fops = {
 	.write = switchtec_dev_write,
 	.read = switchtec_dev_read,
 	.poll = switchtec_dev_poll,
+	.unlocked_ioctl = switchtec_dev_ioctl,
+	.compat_ioctl = switchtec_dev_ioctl,
 };
 
 static irqreturn_t switchtec_event_isr(int irq, void *dev)

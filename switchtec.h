@@ -66,7 +66,7 @@ struct flash_info_regs {
 
 	struct partition_info {
 		uint32_t address;
-		uint32_t build_ver;
+		uint32_t build_version;
 		uint32_t build_string;
 	} active_main_fw;
 
