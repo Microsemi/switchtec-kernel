@@ -28,6 +28,8 @@ enum {
 	SWITCHTEC_GAS_MRPC_OFFSET       = 0x0000,
 	SWITCHTEC_GAS_TOP_CFG_OFFSET    = 0x1000,
 	SWITCHTEC_GAS_SW_EVENT_OFFSET   = 0x1800,
+	SWITCHTEC_GAS_SYS_INFO_OFFSET   = 0x2000,
+	SWITCHTEC_GAS_FLASH_INFO_OFFSET = 0x2200,
 	SWITCHTEC_GAS_PART_CFG_OFFSET   = 0x4000,
 	SWITCHTEC_GAS_NTB_OFFSET        = 0x10000,
 	SWITCHTEC_GAS_PFF_CSR_OFFSET    = 0x134000,
@@ -46,6 +48,31 @@ enum mrpc_status {
 	SWITCHTEC_MRPC_STATUS_DONE = 2,
 	SWITCHTEC_MRPC_STATUS_ERROR = 0xFF,
 	SWITCHTEC_MRPC_STATUS_INTERRUPTED = 0x100,
+};
+
+struct sys_info_regs {
+	uint32_t device_id;
+	uint32_t device_version;
+	uint32_t firmware_version;
+	uint32_t reserved1;
+	uint32_t vendor_table_revision;
+	uint32_t table_format_version;
+	uint32_t partition_id;
+	uint32_t cfg_file_fmt_version;
+};
+
+struct flash_info_regs {
+	uint32_t flash_part_map_upd_idx;
+
+	struct partition_info {
+		uint32_t address;
+		uint32_t build_ver;
+		uint32_t build_string;
+	} active_main_fw;
+
+	struct partition_info active_cfg;
+	struct partition_info inactive_main_fw;
+	struct partition_info inactive_cfg;
 };
 
 struct ntb_info_regs {
@@ -97,6 +124,8 @@ struct switchtec_dev {
 
 	void __iomem *mmio;
 	struct mrpc_regs __iomem *mmio_mrpc;
+	struct sys_info_regs __iomem *mmio_sys_info;
+	struct flash_info_regs __iomem *mmio_flash_info;
 	struct ntb_info_regs __iomem *mmio_ntb;
 	struct part_cfg_regs __iomem *mmio_part_cfg;
 

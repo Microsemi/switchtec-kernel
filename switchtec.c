@@ -656,6 +656,8 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	}
 
 	stdev->mmio_mrpc = stdev->mmio + SWITCHTEC_GAS_MRPC_OFFSET;
+	stdev->mmio_sys_info = stdev->mmio + SWITCHTEC_GAS_SYS_INFO_OFFSET;
+	stdev->mmio_flash_info = stdev->mmio + SWITCHTEC_GAS_FLASH_INFO_OFFSET;
 	stdev->mmio_ntb = stdev->mmio + SWITCHTEC_GAS_NTB_OFFSET;
 	partition = ioread8(&stdev->mmio_ntb->partition_id);
 	stdev->mmio_part_cfg = stdev->mmio + SWITCHTEC_GAS_PART_CFG_OFFSET +
