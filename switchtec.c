@@ -535,6 +535,10 @@ static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
 	}
 
 	stdev->event_irq = ioread32(&stdev->mmio_part_cfg->vep_vector_number);
+	if (stdev->event_irq < 0 || stdev->event_irq >= msix_count) {
+		rc = -EFAULT;
+		goto err_msix_request;
+	}
 
 	rc = request_irq(stdev->msix[stdev->event_irq].vector,
 			 switchtec_event_isr, 0,
@@ -575,6 +579,10 @@ static int switchtec_init_msi_isr(struct switchtec_dev *stdev)
 		goto err_msi_enable;
 
 	stdev->event_irq = ioread32(&stdev->mmio_part_cfg->vep_vector_number);
+	if (stdev->event_irq < 0 || stdev->event_irq >= 4) {
+		rc = -EFAULT;
+		goto err_msi_request;
+	}
 
 	rc = request_irq(pdev->irq + stdev->event_irq, switchtec_event_isr, 0,
 			 "switchtec_event_isr", stdev);
