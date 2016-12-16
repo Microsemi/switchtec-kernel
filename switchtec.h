@@ -100,8 +100,12 @@ struct switchtec_dev {
 	struct ntb_info_regs __iomem *mmio_ntb;
 	struct part_cfg_regs __iomem *mmio_part_cfg;
 
-	struct list_head mrpc_queue;
+	/*
+	 * The mrpc mutex must be held when accessing the other
+	 * mrpc fields
+	 */
 	struct mutex mrpc_mutex;
+	struct list_head mrpc_queue;
 	int mrpc_busy;
 	struct work_struct mrpc_work;
 	struct delayed_work mrpc_timeout;
@@ -110,6 +114,6 @@ struct switchtec_dev {
 #define stdev_pdev(stdev) ((stdev)->pdev)
 #define stdev_pdev_dev(stdev) (&stdev_pdev(stdev)->dev)
 #define stdev_name(stdev) pci_name(stdev_pdev(stdev))
-#define stdev_dev(stdev) (stdev->dev)
+#define stdev_dev(stdev) ((stdev)->dev)
 
 #endif

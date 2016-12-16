@@ -66,6 +66,7 @@ struct switchtec_user {
 static void stuser_free(struct kref *kref)
 {
 	struct switchtec_user *stuser;
+
 	stuser = container_of(kref, struct switchtec_user, kref);
 
 	kfree(stuser);
@@ -85,7 +86,8 @@ static void stuser_put(struct switchtec_user *stuser)
 	kref_put(&stuser->kref, stuser_free);
 }
 
-static void stuser_set_state(struct switchtec_user *stuser, enum mrpc_state state)
+static void stuser_set_state(struct switchtec_user *stuser,
+			     enum mrpc_state state)
 {
 	const char * const state_names[] = {
 		[MRPC_IDLE] = "IDLE",
@@ -100,9 +102,7 @@ static void stuser_set_state(struct switchtec_user *stuser, enum mrpc_state stat
 		stuser, state_names[state]);
 }
 
-
 static void mrpc_complete_cmd(struct switchtec_dev *stdev);
-
 
 static void mrpc_cmd_submit(struct switchtec_dev *stdev)
 {
@@ -187,6 +187,7 @@ out:
 static void mrpc_event_work(struct work_struct *work)
 {
 	struct switchtec_dev *stdev;
+
 	stdev = container_of(work, struct switchtec_dev, mrpc_work);
 
 	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
@@ -245,7 +246,6 @@ static int switchtec_register_dev(struct switchtec_dev *stdev)
 
 	return 0;
 
-
 err_create:
 	ida_simple_remove(&switchtec_minor_ida, minor);
 
@@ -265,7 +265,7 @@ static void stdev_free(struct kref *kref)
 
 	stdev = container_of(kref, struct switchtec_dev, kref);
 
-	if (stdev->dev == NULL)
+	if (!stdev->dev)
 		goto free_and_exit;
 
 	get_device(stdev_dev(stdev));
@@ -455,7 +455,8 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 	}
 
 	data += sizeof(stuser->return_code);
-	rc = copy_to_user(data, &stuser->data, size - sizeof(stuser->return_code));
+	rc = copy_to_user(data, &stuser->data,
+			  size - sizeof(stuser->return_code));
 	if (rc) {
 		rc = -EFAULT;
 		goto out;
@@ -577,7 +578,6 @@ static int switchtec_init_msi_isr(struct switchtec_dev *stdev)
 
 	stdev->msix = NULL;
 
-
 	/* Try to set up msi irq */
 	rc = pci_enable_msi_range(pdev, 1, 4);
 	if (rc < 0)
@@ -656,7 +656,7 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	}
 
 	stdev->mmio_mrpc = stdev->mmio + SWITCHTEC_GAS_MRPC_OFFSET;
-        stdev->mmio_ntb = stdev->mmio + SWITCHTEC_GAS_NTB_OFFSET;
+	stdev->mmio_ntb = stdev->mmio + SWITCHTEC_GAS_NTB_OFFSET;
 	partition = ioread8(&stdev->mmio_ntb->partition_id);
 	stdev->mmio_part_cfg = stdev->mmio + SWITCHTEC_GAS_PART_CFG_OFFSET +
 		sizeof(struct part_cfg_regs) * partition;
@@ -757,7 +757,6 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 		.class_mask = 0xFFFFFFFF, \
 	}
 
-
 static const struct pci_device_id switchtec_pci_tbl[] = {
 	SWITCHTEC_PCI_DEVICE(0x8531),  //PFX 24xG3
 	SWITCHTEC_PCI_DEVICE(0x8532),  //PFX 32xG3
@@ -798,7 +797,6 @@ static int __init switchtec_init(void)
 	rc = pci_register_driver(&switchtec_pci_driver);
 	if (rc)
 		goto err_pci_register;
-
 
 	pr_info(KBUILD_MODNAME ": loaded.\n");
 
