@@ -264,6 +264,10 @@ static void stdev_free(struct kref *kref)
 	struct switchtec_user *stuser, *temp;
 
 	stdev = container_of(kref, struct switchtec_dev, kref);
+
+	if (stdev->dev == NULL)
+		goto free_and_exit;
+
 	get_device(stdev_dev(stdev));
 
 	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
@@ -282,6 +286,7 @@ static void stdev_free(struct kref *kref)
 	switchtec_unregister_dev(stdev);
 	put_device(stdev_dev(stdev));
 
+free_and_exit:
 	kfree(stdev);
 }
 
