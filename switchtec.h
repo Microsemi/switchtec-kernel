@@ -59,6 +59,13 @@ struct sys_info_regs {
 	uint32_t table_format_version;
 	uint32_t partition_id;
 	uint32_t cfg_file_fmt_version;
+	uint32_t reserved2[58];
+	char     vendor_id[8];
+	char     product_id[16];
+	char     product_revision[4];
+	char     component_vendor[8];
+	uint16_t component_id;
+	uint8_t  component_revision;
 };
 
 struct flash_info_regs {
