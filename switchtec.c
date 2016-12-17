@@ -617,19 +617,6 @@ static int ioctl_fw_info(struct switchtec_dev *stdev,
 	fw_info_set(inactive_cfg.build_version);
 	fw_info_set(inactive_cfg.build_string);
 
-	/*
-	 * For some reason the hardware gives us these versions
-	 *  with swapped bytes compared to other instances.
-	 */
-	info.active_main_fw.build_version =
-		__swab32(info.active_main_fw.build_version);
-	info.active_cfg.build_version =
-		__swab32(info.active_cfg.build_version);
-	info.inactive_main_fw.build_version =
-		__swab32(info.inactive_main_fw.build_version);
-	info.inactive_cfg.build_version =
-		__swab32(info.inactive_cfg.build_version);
-
 	if (copy_to_user(uinfo, &info, sizeof(info)))
 		return -EFAULT;
 
