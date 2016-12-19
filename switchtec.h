@@ -17,6 +17,7 @@
 #define SWITCHTEC_H
 
 #include <linux/pci.h>
+#include <linux/cdev.h>
 
 #define MICROSEMI_VENDOR_ID         0x11f8
 #define MICROSEMI_NTB_CLASSCODE     0x068000
@@ -124,9 +125,8 @@ enum {
 struct switchtec_dev {
 	struct pci_dev *pdev;
 	struct msix_entry *msix;
-	struct device *dev;
-	struct kref kref;
-
+	struct device dev;
+	struct cdev cdev;
 	unsigned int event_irq;
 
 	void __iomem *mmio;
@@ -150,6 +150,6 @@ struct switchtec_dev {
 #define stdev_pdev(stdev) ((stdev)->pdev)
 #define stdev_pdev_dev(stdev) (&stdev_pdev(stdev)->dev)
 #define stdev_name(stdev) pci_name(stdev_pdev(stdev))
-#define stdev_dev(stdev) ((stdev)->dev)
+#define stdev_dev(stdev) (&(stdev)->dev)
 
 #endif

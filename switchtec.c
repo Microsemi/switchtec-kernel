@@ -27,20 +27,17 @@ MODULE_VERSION("0.1");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Microsemi Corporation");
 
-static int switchtec_major;
+static int max_devices = 16;
+module_param(max_devices, int, S_IRUGO);
+MODULE_PARM_DESC(max_devices, "max number of switchtec device instances");
+
+static dev_t switchtec_devt;
 static struct class *switchtec_class;
 static DEFINE_IDA(switchtec_minor_ida);
 
-static int __match_devt(struct device *dev, const void *data)
+static struct switchtec_dev *to_stdev(struct device *dev)
 {
-	const dev_t *devt = data;
-
-	return dev->devt == *devt;
-}
-
-static struct device *switchtec_dev_find(dev_t dev_t)
-{
-	return class_find_device(switchtec_class, NULL, &dev_t, __match_devt);
+	return container_of(dev, struct switchtec_dev, dev);
 }
 
 struct switchtec_user {
@@ -64,22 +61,35 @@ struct switchtec_user {
 	unsigned char data[SWITCHTEC_MRPC_PAYLOAD_SIZE];
 };
 
+static struct switchtec_user *stuser_create(struct switchtec_dev *stdev)
+{
+	struct switchtec_user *stuser;
+
+	stuser = kzalloc(sizeof(*stuser), GFP_KERNEL);
+	if (!stuser)
+		return ERR_PTR(-ENOMEM);
+
+	get_device(&stdev->dev);
+	stuser->stdev = stdev;
+	kref_init(&stuser->kref);
+	INIT_LIST_HEAD(&stuser->list);
+	init_completion(&stuser->comp);
+
+	dev_dbg(&stdev->dev, "%s: %p\n", __func__, stuser);
+
+	return stuser;
+}
+
 static void stuser_free(struct kref *kref)
 {
 	struct switchtec_user *stuser;
 
 	stuser = container_of(kref, struct switchtec_user, kref);
 
-	kfree(stuser);
-}
+	dev_dbg(&stuser->stdev->dev, "%s: %p\n", __func__, stuser);
 
-static void stuser_init(struct switchtec_user *stuser,
-			struct switchtec_dev *stdev)
-{
-	stuser->stdev = stdev;
-	kref_init(&stuser->kref);
-	INIT_LIST_HEAD(&stuser->list);
-	init_completion(&stuser->comp);
+	put_device(&stuser->stdev->dev);
+	kfree(stuser);
 }
 
 static void stuser_put(struct switchtec_user *stuser)
@@ -101,6 +111,11 @@ static void stuser_set_state(struct switchtec_user *stuser,
 
 	dev_dbg(stdev_dev(stuser->stdev), "stuser state %p -> %s",
 		stuser, state_names[state]);
+}
+
+static int stdev_is_alive(struct switchtec_dev *stdev)
+{
+	return stdev->mmio != NULL;
 }
 
 static void mrpc_complete_cmd(struct switchtec_dev *stdev);
@@ -210,11 +225,13 @@ static void mrpc_timeout_work(struct work_struct *work)
 
 	mutex_lock(&stdev->mrpc_mutex);
 
-	status = ioread32(&stdev->mmio_mrpc->status);
-	if (status == SWITCHTEC_MRPC_STATUS_INPROGRESS) {
-		schedule_delayed_work(&stdev->mrpc_timeout,
-				      msecs_to_jiffies(500));
-		goto out;
+	if (stdev_is_alive(stdev)) {
+		status = ioread32(&stdev->mmio_mrpc->status);
+		if (status == SWITCHTEC_MRPC_STATUS_INPROGRESS) {
+			schedule_delayed_work(&stdev->mrpc_timeout,
+					      msecs_to_jiffies(500));
+			goto out;
+		}
 	}
 
 	mrpc_complete_cmd(stdev);
@@ -226,7 +243,7 @@ out:
 static ssize_t device_version_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	struct switchtec_dev *stdev = dev_get_drvdata(dev);
+	struct switchtec_dev *stdev = to_stdev(dev);
 	uint32_t ver;
 
 	ver = ioread32(&stdev->mmio_sys_info->device_version);
@@ -238,7 +255,7 @@ static DEVICE_ATTR_RO(device_version);
 static ssize_t fw_version_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	struct switchtec_dev *stdev = dev_get_drvdata(dev);
+	struct switchtec_dev *stdev = to_stdev(dev);
 	uint32_t ver;
 
 	ver = ioread32(&stdev->mmio_sys_info->firmware_version);
@@ -269,7 +286,7 @@ static ssize_t io_string_show(char *buf, void __iomem *attr, size_t len)
 static ssize_t field ## _show(struct device *dev, \
 			      struct device_attribute *attr, char *buf) \
 { \
-	struct switchtec_dev *stdev = dev_get_drvdata(dev); \
+	struct switchtec_dev *stdev = to_stdev(dev); \
 	return io_string_show(buf, &stdev->mmio_sys_info->field, \
 			    sizeof(stdev->mmio_sys_info->field)); \
 } \
@@ -284,7 +301,7 @@ DEVICE_ATTR_SYS_INFO_STR(component_vendor);
 static ssize_t component_id_show(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
-	struct switchtec_dev *stdev = dev_get_drvdata(dev);
+	struct switchtec_dev *stdev = to_stdev(dev);
 	int id = ioread16(&stdev->mmio_sys_info->component_id);
 	return sprintf(buf, "PM%04X\n", id);
 }
@@ -293,13 +310,13 @@ static DEVICE_ATTR_RO(component_id);
 static ssize_t component_revision_show(struct device *dev,
 				       struct device_attribute *attr, char *buf)
 {
-	struct switchtec_dev *stdev = dev_get_drvdata(dev);
+	struct switchtec_dev *stdev = to_stdev(dev);
 	int rev = ioread8(&stdev->mmio_sys_info->component_revision);
 	return sprintf(buf, "%d\n", rev);
 }
 static DEVICE_ATTR_RO(component_revision);
 
-static struct attribute *switchtec_device_attributes[] = {
+static struct attribute *switchtec_device_attrs[] = {
 	&dev_attr_device_version.attr,
 	&dev_attr_fw_version.attr,
 	&dev_attr_vendor_id.attr,
@@ -311,159 +328,33 @@ static struct attribute *switchtec_device_attributes[] = {
 	NULL,
 };
 
-static const struct attribute_group switchtec_device_attribute_group = {
-	.attrs = switchtec_device_attributes,
-};
+ATTRIBUTE_GROUPS(switchtec_device);
 
-static const struct attribute_group *switchtec_attribute_groups[] = {
-	&switchtec_device_attribute_group,
-	NULL,
-};
-
-static int switchtec_register_dev(struct switchtec_dev *stdev)
-{
-	int rc;
-	int minor;
-	struct device *dev;
-	dev_t devt;
-
-	minor = ida_simple_get(&switchtec_minor_ida, 0, 0,
-			       GFP_KERNEL);
-	if (minor < 0)
-		return minor;
-
-	devt = MKDEV(switchtec_major, minor);
-	dev = device_create_with_groups(switchtec_class, &stdev->pdev->dev,
-					devt, stdev,
-					switchtec_attribute_groups,
-					"switchtec%d", minor);
-	if (IS_ERR(dev)) {
-		rc = PTR_ERR(dev);
-		goto err_create;
-	}
-
-	stdev->dev = dev;
-
-	return 0;
-
-err_create:
-	ida_simple_remove(&switchtec_minor_ida, minor);
-
-	return rc;
-}
-
-static void switchtec_unregister_dev(struct switchtec_dev *stdev)
-{
-	device_unregister(stdev_dev(stdev));
-	ida_simple_remove(&switchtec_minor_ida, MINOR(stdev_dev(stdev)->devt));
-}
-
-static void stdev_free(struct kref *kref)
-{
-	struct switchtec_dev *stdev;
-	struct switchtec_user *stuser, *temp;
-
-	stdev = container_of(kref, struct switchtec_dev, kref);
-
-	if (!stdev->dev)
-		goto free_and_exit;
-
-	get_device(stdev_dev(stdev));
-
-	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
-
-	cancel_delayed_work(&stdev->mrpc_timeout);
-	mutex_lock(&stdev->mrpc_mutex);
-
-	list_for_each_entry_safe(stuser, temp, &stdev->mrpc_queue, list) {
-		stuser->status = SWITCHTEC_MRPC_STATUS_INTERRUPTED;
-		list_del_init(&stuser->list);
-		stuser_put(stuser);
-	}
-
-	mutex_unlock(&stdev->mrpc_mutex);
-
-	switchtec_unregister_dev(stdev);
-	put_device(stdev_dev(stdev));
-
-free_and_exit:
-	kfree(stdev);
-}
-
-static void stdev_init(struct switchtec_dev *stdev,
-		       struct pci_dev *pdev)
-{
-	stdev->pdev = pdev;
-	kref_init(&stdev->kref);
-	INIT_LIST_HEAD(&stdev->mrpc_queue);
-	mutex_init(&stdev->mrpc_mutex);
-	stdev->mrpc_busy = 0;
-	INIT_WORK(&stdev->mrpc_work, mrpc_event_work);
-	INIT_DELAYED_WORK(&stdev->mrpc_timeout, mrpc_timeout_work);
-}
-
-static void stdev_put(struct switchtec_dev *stdev)
-{
-	kref_put(&stdev->kref, stdev_free);
-}
-
-static int stdev_is_alive(struct switchtec_dev *stdev)
-{
-	return stdev->mmio != NULL;
-}
 
 static int switchtec_dev_open(struct inode *inode, struct file *filp)
 {
-	struct device *dev;
 	struct switchtec_dev *stdev;
 	struct switchtec_user *stuser;
-	int rc;
 
-	dev = switchtec_dev_find(inode->i_rdev);
-	if (!dev)
-		return -ENXIO;
+	stdev = container_of(inode->i_cdev, struct switchtec_dev, cdev);
 
-	device_lock(dev);
-	stdev = dev_get_drvdata(dev);
-	if (!stdev) {
-		rc = -ENXIO;
-		goto err_unlock_exit;
-	}
+	stuser = stuser_create(stdev);
+	if (!stuser)
+		return PTR_ERR(stuser);
 
-	kref_get(&stdev->kref);
-
-	stuser = kzalloc(sizeof(*stuser), GFP_KERNEL);
-	if (!stuser) {
-		rc = -ENOMEM;
-		goto err_unlock_exit;
-	}
-
-	stuser_init(stuser, stdev);
 	filp->private_data = stuser;
+	nonseekable_open(inode, filp);
 
 	dev_dbg(stdev_dev(stdev), "%s: %p\n", __func__, stuser);
 
-	device_unlock(dev);
-	nonseekable_open(inode, filp);
 	return 0;
-
-err_unlock_exit:
-	device_unlock(dev);
-	put_device(dev);
-	return rc;
 }
 
 static int switchtec_dev_release(struct inode *inode, struct file *filp)
 {
 	struct switchtec_user *stuser = filp->private_data;
-	struct switchtec_dev *stdev = stuser->stdev;
-	struct device *dev = stdev_dev(stdev);
-
-	dev_dbg(dev, "%s: %p\n", __func__, stuser);
 
 	stuser_put(stuser);
-	stdev_put(stdev);
-	put_device(dev);
 
 	return 0;
 }
@@ -649,6 +540,79 @@ static const struct file_operations switchtec_fops = {
 	.unlocked_ioctl = switchtec_dev_ioctl,
 	.compat_ioctl = switchtec_dev_ioctl,
 };
+
+static void stdev_release(struct device *dev)
+{
+	struct switchtec_dev *stdev = to_stdev(dev);
+
+	ida_simple_remove(&switchtec_minor_ida,
+			  MINOR(dev->devt));
+	kfree(stdev);
+}
+
+static void stdev_unregister(struct switchtec_dev *stdev)
+{
+	cdev_del(&stdev->cdev);
+	device_unregister(stdev_dev(stdev));
+}
+
+static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
+{
+	struct switchtec_dev *stdev;
+	int minor;
+	struct device *dev;
+	struct cdev *cdev;
+	int rc;
+
+	stdev = kzalloc_node(sizeof(*stdev), GFP_KERNEL,
+			     dev_to_node(&pdev->dev));
+	if (!stdev)
+		return ERR_PTR(-ENOMEM);
+
+	stdev->pdev = pdev;
+	INIT_LIST_HEAD(&stdev->mrpc_queue);
+	mutex_init(&stdev->mrpc_mutex);
+	stdev->mrpc_busy = 0;
+	INIT_WORK(&stdev->mrpc_work, mrpc_event_work);
+	INIT_DELAYED_WORK(&stdev->mrpc_timeout, mrpc_timeout_work);
+
+	minor = ida_simple_get(&switchtec_minor_ida, 0, 0,
+			       GFP_KERNEL);
+	if (minor < 0)
+		return ERR_PTR(minor);
+
+	dev = &stdev->dev;
+	device_initialize(dev);
+	dev->devt = MKDEV(MAJOR(switchtec_devt), minor);
+	dev->class = switchtec_class;
+	dev->parent = &pdev->dev;
+	dev->groups = switchtec_device_groups;
+	dev->release = stdev_release;
+	dev_set_name(dev, "switchtec%d", minor);
+
+	cdev = &stdev->cdev;
+	cdev_init(cdev, &switchtec_fops);
+	cdev->owner = THIS_MODULE;
+	cdev->kobj.parent = &dev->kobj;
+
+	rc = cdev_add(&stdev->cdev, dev->devt, 1);
+	if (rc)
+		goto err_cdev;
+
+	rc = device_add(dev);
+	if (rc) {
+		cdev_del(&stdev->cdev);
+		put_device(dev);
+		return ERR_PTR(rc);
+	}
+
+	return stdev;
+
+err_cdev:
+	ida_simple_remove(&switchtec_minor_ida, minor);
+
+	return ERR_PTR(rc);
+}
 
 static irqreturn_t switchtec_event_isr(int irq, void *dev)
 {
@@ -838,17 +802,11 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 			       const struct pci_device_id *id)
 {
 	struct switchtec_dev *stdev;
-	int rc, node;
+	int rc;
 
-	node = dev_to_node(&pdev->dev);
-
-	stdev = kzalloc_node(sizeof(*stdev), GFP_KERNEL, node);
-	if (!stdev) {
-		rc = -ENOMEM;
-		goto err_stdev;
-	}
-
-	stdev_init(stdev, pdev);
+	stdev = stdev_create(pdev);
+	if (!stdev)
+		return PTR_ERR(stdev);
 
 	rc = switchtec_init_pci(stdev, pdev);
 	if (rc)
@@ -860,21 +818,14 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 		goto err_init_isr;
 	}
 
-	rc = switchtec_register_dev(stdev);
-	if (rc)
-		goto err_register_dev;
-
 	dev_info(stdev_dev(stdev), "Management device registered.\n");
 
 	return 0;
 
-err_register_dev:
-	switchtec_deinit_isr(stdev);
 err_init_isr:
 	switchtec_deinit_pci(stdev);
 err_init_pci:
-	stdev_put(stdev);
-err_stdev:
+	stdev_unregister(stdev);
 	return rc;
 }
 
@@ -884,7 +835,7 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 
 	switchtec_deinit_isr(stdev);
 	switchtec_deinit_pci(stdev);
-	stdev_put(stdev);
+	stdev_unregister(stdev);
 }
 
 #define SWITCHTEC_PCI_DEVICE(device_id) \
@@ -931,10 +882,11 @@ static int __init switchtec_init(void)
 {
 	int rc;
 
-	rc = register_chrdev(0, "switchtec", &switchtec_fops);
-	if (rc < 0)
+	max_devices = max(max_devices, 256);
+	rc = alloc_chrdev_region(&switchtec_devt, 0, max_devices,
+				 "switchtec");
+	if (rc)
 		return rc;
-	switchtec_major = rc;
 
 	switchtec_class = class_create(THIS_MODULE, "switchtec");
 	if (IS_ERR(switchtec_class)) {
@@ -954,7 +906,7 @@ err_pci_register:
 	class_destroy(switchtec_class);
 
 err_create_class:
-	unregister_chrdev(switchtec_major, "switchtec");
+	unregister_chrdev_region(switchtec_devt, max_devices);
 
 	return rc;
 }
@@ -964,7 +916,7 @@ static void __exit switchtec_exit(void)
 {
 	pci_unregister_driver(&switchtec_pci_driver);
 	class_destroy(switchtec_class);
-	unregister_chrdev(switchtec_major, "switchtec");
+	unregister_chrdev_region(switchtec_devt, max_devices);
 	ida_destroy(&switchtec_minor_ida);
 
 	pr_info(KBUILD_MODNAME ": unloaded.\n");
