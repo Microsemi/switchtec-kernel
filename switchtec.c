@@ -109,7 +109,7 @@ static void stuser_set_state(struct switchtec_user *stuser,
 
 	stuser->state = state;
 
-	dev_dbg(stdev_dev(stuser->stdev), "stuser state %p -> %s",
+	dev_dbg(&stuser->stdev->dev, "stuser state %p -> %s",
 		stuser, state_names[state]);
 }
 
@@ -206,7 +206,7 @@ static void mrpc_event_work(struct work_struct *work)
 
 	stdev = container_of(work, struct switchtec_dev, mrpc_work);
 
-	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
+	dev_dbg(&stdev->dev, "%s\n", __func__);
 
 	mutex_lock(&stdev->mrpc_mutex);
 	cancel_delayed_work(&stdev->mrpc_timeout);
@@ -221,7 +221,7 @@ static void mrpc_timeout_work(struct work_struct *work)
 
 	stdev = container_of(work, struct switchtec_dev, mrpc_timeout.work);
 
-	dev_dbg(stdev_dev(stdev), "%s\n", __func__);
+	dev_dbg(&stdev->dev, "%s\n", __func__);
 
 	mutex_lock(&stdev->mrpc_mutex);
 
@@ -345,7 +345,7 @@ static int switchtec_dev_open(struct inode *inode, struct file *filp)
 	filp->private_data = stuser;
 	nonseekable_open(inode, filp);
 
-	dev_dbg(stdev_dev(stdev), "%s: %p\n", __func__, stuser);
+	dev_dbg(&stdev->dev, "%s: %p\n", __func__, stuser);
 
 	return 0;
 }
@@ -553,7 +553,7 @@ static void stdev_release(struct device *dev)
 static void stdev_unregister(struct switchtec_dev *stdev)
 {
 	cdev_del(&stdev->cdev);
-	device_unregister(stdev_dev(stdev));
+	device_unregister(&stdev->dev);
 }
 
 static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
@@ -631,7 +631,7 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 
 static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
 {
-	struct pci_dev *pdev = stdev_pdev(stdev);
+	struct pci_dev *pdev = stdev->pdev;
 	int rc, i, msix_count, node;
 
 	node = dev_to_node(&pdev->dev);
@@ -663,7 +663,7 @@ static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
 	if (rc)
 		goto err_msix_request;
 
-	dev_dbg(stdev_pdev_dev(stdev), "Using msix interrupts: event_irq=%d\n",
+	dev_dbg(&stdev->dev, "Using msix interrupts: event_irq=%d\n",
 		stdev->event_irq);
 	return 0;
 
@@ -677,14 +677,14 @@ err_msix_enable:
 static void switchtec_deinit_msix_isr(struct switchtec_dev *stdev)
 {
 	free_irq(stdev->msix[stdev->event_irq].vector, stdev);
-	pci_disable_msix(stdev_pdev(stdev));
+	pci_disable_msix(stdev->pdev);
 	kfree(stdev->msix);
 }
 
 static int switchtec_init_msi_isr(struct switchtec_dev *stdev)
 {
 	int rc;
-	struct pci_dev *pdev = stdev_pdev(stdev);
+	struct pci_dev *pdev = stdev->pdev;
 
 	stdev->msix = NULL;
 
@@ -704,7 +704,7 @@ static int switchtec_init_msi_isr(struct switchtec_dev *stdev)
 	if (rc)
 		goto err_msi_request;
 
-	dev_dbg(stdev_pdev_dev(stdev), "Using msi interrupts: event_irq=%d\n",
+	dev_dbg(&stdev->dev, "Using msi interrupts: event_irq=%d\n",
 		stdev->event_irq);
 	return 0;
 
@@ -716,7 +716,7 @@ err_msi_enable:
 
 static void switchtec_deinit_msi_isr(struct switchtec_dev *stdev)
 {
-	struct pci_dev *pdev = stdev_pdev(stdev);
+	struct pci_dev *pdev = stdev->pdev;
 
 	free_irq(pdev->irq + stdev->event_irq, stdev);
 	pci_disable_msi(pdev);
@@ -787,7 +787,7 @@ err_pci_enable:
 
 static void switchtec_deinit_pci(struct switchtec_dev *stdev)
 {
-	struct pci_dev *pdev = stdev_pdev(stdev);
+	struct pci_dev *pdev = stdev->pdev;
 
 	pci_iounmap(pdev, stdev->mmio);
 	stdev->mmio = NULL;
@@ -814,11 +814,11 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 
 	rc = switchtec_init_isr(stdev);
 	if (rc) {
-		dev_err(stdev_pdev_dev(stdev), "failed to init isr.\n");
+		dev_err(&stdev->dev, "failed to init isr.\n");
 		goto err_init_isr;
 	}
 
-	dev_info(stdev_dev(stdev), "Management device registered.\n");
+	dev_info(&stdev->dev, "Management device registered.\n");
 
 	return 0;
 

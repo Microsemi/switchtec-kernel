@@ -147,9 +147,4 @@ struct switchtec_dev {
 	struct delayed_work mrpc_timeout;
 };
 
-#define stdev_pdev(stdev) ((stdev)->pdev)
-#define stdev_pdev_dev(stdev) (&stdev_pdev(stdev)->dev)
-#define stdev_name(stdev) pci_name(stdev_pdev(stdev))
-#define stdev_dev(stdev) (&(stdev)->dev)
-
 #endif
