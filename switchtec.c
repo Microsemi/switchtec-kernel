@@ -747,15 +747,13 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	int rc;
 	int partition;
 
-	pci_set_drvdata(pdev, stdev);
-
-	rc = pci_enable_device(pdev);
+	rc = pcim_enable_device(pdev);
 	if (rc)
-		goto err_pci_enable;
+		return rc;
 
 	rc = pci_request_regions(pdev, KBUILD_MODNAME);
 	if (rc)
-		goto err_pci_regions;
+		return rc;
 
 	pci_set_master(pdev);
 
@@ -765,6 +763,7 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 		goto err_iomap;
 	}
 
+
 	stdev->mmio_mrpc = stdev->mmio + SWITCHTEC_GAS_MRPC_OFFSET;
 	stdev->mmio_sys_info = stdev->mmio + SWITCHTEC_GAS_SYS_INFO_OFFSET;
 	stdev->mmio_flash_info = stdev->mmio + SWITCHTEC_GAS_FLASH_INFO_OFFSET;
@@ -773,15 +772,13 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	stdev->mmio_part_cfg = stdev->mmio + SWITCHTEC_GAS_PART_CFG_OFFSET +
 		sizeof(struct part_cfg_regs) * partition;
 
+	pci_set_drvdata(pdev, stdev);
+
 	return 0;
 
 err_iomap:
 	pci_clear_master(pdev);
 	pci_release_regions(pdev);
-err_pci_regions:
-	pci_disable_device(pdev);
-err_pci_enable:
-	pci_set_drvdata(pdev, NULL);
 	return rc;
 }
 
@@ -794,7 +791,6 @@ static void switchtec_deinit_pci(struct switchtec_dev *stdev)
 
 	pci_clear_master(pdev);
 	pci_release_regions(pdev);
-	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
 }
 
