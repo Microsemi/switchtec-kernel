@@ -72,15 +72,28 @@ struct sys_info_regs {
 struct flash_info_regs {
 	uint32_t flash_part_map_upd_idx;
 
-	struct partition_info {
+	struct active_partition_info {
 		uint32_t address;
 		uint32_t build_version;
 		uint32_t build_string;
-	} active_main_fw;
+	} active_img;
 
-	struct partition_info active_cfg;
-	struct partition_info inactive_main_fw;
-	struct partition_info inactive_cfg;
+	struct active_partition_info active_cfg;
+	struct active_partition_info inactive_img;
+	struct active_partition_info inactive_cfg;
+
+	uint32_t flash_length;
+
+	struct partition_info {
+		uint32_t address;
+		uint32_t length;
+	} cfg0;
+
+	struct partition_info cfg1;
+	struct partition_info img0;
+	struct partition_info img1;
+	struct partition_info nvlog;
+	struct partition_info vendor[8];
 };
 
 struct ntb_info_regs {
