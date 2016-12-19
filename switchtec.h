@@ -124,7 +124,7 @@ enum {
 
 struct switchtec_dev {
 	struct pci_dev *pdev;
-	struct msix_entry *msix;
+	struct msix_entry msix[4];
 	struct device dev;
 	struct cdev cdev;
 	unsigned int event_irq;

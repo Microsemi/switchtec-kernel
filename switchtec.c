@@ -636,19 +636,13 @@ static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
 
 	node = dev_to_node(&pdev->dev);
 
-	stdev->msix = kzalloc_node(4 * sizeof(*stdev->msix),
-				  GFP_KERNEL, node);
-	if (!stdev->msix)
-		return -ENOMEM;
-
-	for (i = 0; i < 4; ++i)
+	for (i = 0; i < ARRAY_SIZE(stdev->msix); ++i)
 		stdev->msix[i].entry = i;
 
-	msix_count = pci_enable_msix_range(pdev, stdev->msix, 1, 4);
-	if (msix_count < 0) {
-		rc = msix_count;
-		goto err_msix_enable;
-	}
+	msix_count = pci_enable_msix_range(pdev, stdev->msix, 1,
+					   ARRAY_SIZE(stdev->msix));
+	if (msix_count < 0)
+		return msix_count;
 
 	stdev->event_irq = ioread32(&stdev->mmio_part_cfg->vep_vector_number);
 	if (stdev->event_irq < 0 || stdev->event_irq >= msix_count) {
@@ -656,29 +650,15 @@ static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
 		goto err_msix_request;
 	}
 
-	rc = request_irq(stdev->msix[stdev->event_irq].vector,
-			 switchtec_event_isr, 0,
-			 "switchtec_event_isr", stdev);
-
-	if (rc)
-		goto err_msix_request;
-
+	stdev->event_irq = stdev->msix[stdev->event_irq].vector;
 	dev_dbg(&stdev->dev, "Using msix interrupts: event_irq=%d\n",
 		stdev->event_irq);
+
 	return 0;
 
 err_msix_request:
 	pci_disable_msix(pdev);
-err_msix_enable:
-	kfree(stdev->msix);
 	return rc;
-}
-
-static void switchtec_deinit_msix_isr(struct switchtec_dev *stdev)
-{
-	free_irq(stdev->msix[stdev->event_irq].vector, stdev);
-	pci_disable_msix(stdev->pdev);
-	kfree(stdev->msix);
 }
 
 static int switchtec_init_msi_isr(struct switchtec_dev *stdev)
@@ -686,12 +666,10 @@ static int switchtec_init_msi_isr(struct switchtec_dev *stdev)
 	int rc;
 	struct pci_dev *pdev = stdev->pdev;
 
-	stdev->msix = NULL;
-
 	/* Try to set up msi irq */
 	rc = pci_enable_msi_range(pdev, 1, 4);
 	if (rc < 0)
-		goto err_msi_enable;
+		return rc;
 
 	stdev->event_irq = ioread32(&stdev->mmio_part_cfg->vep_vector_number);
 	if (stdev->event_irq < 0 || stdev->event_irq >= 4) {
@@ -699,46 +677,39 @@ static int switchtec_init_msi_isr(struct switchtec_dev *stdev)
 		goto err_msi_request;
 	}
 
-	rc = request_irq(pdev->irq + stdev->event_irq, switchtec_event_isr, 0,
-			 "switchtec_event_isr", stdev);
-	if (rc)
-		goto err_msi_request;
-
+	stdev->event_irq = pdev->irq + stdev->event_irq;
 	dev_dbg(&stdev->dev, "Using msi interrupts: event_irq=%d\n",
 		stdev->event_irq);
+
 	return 0;
 
 err_msi_request:
 	pci_disable_msi(pdev);
-err_msi_enable:
 	return rc;
-}
-
-static void switchtec_deinit_msi_isr(struct switchtec_dev *stdev)
-{
-	struct pci_dev *pdev = stdev->pdev;
-
-	free_irq(pdev->irq + stdev->event_irq, stdev);
-	pci_disable_msi(pdev);
-}
-
-static void switchtec_deinit_isr(struct switchtec_dev *stdev)
-{
-	if (stdev->msix)
-		switchtec_deinit_msix_isr(stdev);
-	else
-		switchtec_deinit_msi_isr(stdev);
 }
 
 static int switchtec_init_isr(struct switchtec_dev *stdev)
 {
-	int ret;
+	int rc;
 
-	ret = switchtec_init_msix_isr(stdev);
-	if (ret)
-		ret = switchtec_init_msi_isr(stdev);
+	rc = switchtec_init_msix_isr(stdev);
+	if (rc)
+		rc = switchtec_init_msi_isr(stdev);
 
-	return ret;
+	if (rc)
+		return rc;
+
+	rc = devm_request_irq(&stdev->pdev->dev, stdev->event_irq,
+			      switchtec_event_isr, 0, KBUILD_MODNAME, stdev);
+
+	return rc;
+}
+
+static void switchtec_deinit_isr(struct switchtec_dev *stdev)
+{
+	devm_free_irq(&stdev->pdev->dev, stdev->event_irq, stdev);
+	pci_disable_msix(stdev->pdev);
+	pci_disable_msi(stdev->pdev);
 }
 
 static int switchtec_init_pci(struct switchtec_dev *stdev,
