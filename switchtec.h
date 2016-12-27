@@ -237,6 +237,7 @@ struct switchtec_dev {
 	struct work_struct mrpc_work;
 	struct delayed_work mrpc_timeout;
 	wait_queue_head_t event_wq;
+	atomic_t event_cnt;
 };
 
 #endif

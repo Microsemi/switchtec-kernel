@@ -59,6 +59,7 @@ struct switchtec_user {
 	u32 return_code;
 	size_t data_len;
 	unsigned char data[SWITCHTEC_MRPC_PAYLOAD_SIZE];
+	int event_cnt;
 };
 
 static struct switchtec_user *stuser_create(struct switchtec_dev *stdev)
@@ -74,6 +75,7 @@ static struct switchtec_user *stuser_create(struct switchtec_dev *stdev)
 	kref_init(&stuser->kref);
 	INIT_LIST_HEAD(&stuser->list);
 	init_completion(&stuser->comp);
+	stuser->event_cnt = atomic_read(&stdev->event_cnt);
 
 	dev_dbg(&stdev->dev, "%s: %p\n", __func__, stuser);
 
@@ -472,18 +474,21 @@ static unsigned int switchtec_dev_poll(struct file *filp, poll_table *wait)
 {
 	struct switchtec_user *stuser = filp->private_data;
 	struct switchtec_dev *stdev = stuser->stdev;
+	int ret = 0;
 
 	poll_wait(filp, &stuser->comp.wait, wait);
+	poll_wait(filp, &stdev->event_wq, wait);
 
 	if (!stdev_is_alive(stdev))
 		return POLLERR;
 
-	if (stuser->state == MRPC_IDLE)
-		return POLLERR;
-	else if (try_wait_for_completion(&stuser->comp))
-		return POLLIN | POLLRDNORM;
+	if (try_wait_for_completion(&stuser->comp))
+		ret |= POLLIN | POLLRDNORM;
 
-	return 0;
+	if (stuser->event_cnt != atomic_read(&stdev->event_cnt))
+		ret |= POLLPRI | POLLRDBAND;
+
+	return ret;
 }
 
 static void set_fw_info_part(struct switchtec_ioctl_fw_info *info,
@@ -597,6 +602,7 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 	INIT_WORK(&stdev->mrpc_work, mrpc_event_work);
 	INIT_DELAYED_WORK(&stdev->mrpc_timeout, mrpc_timeout_work);
 	init_waitqueue_head(&stdev->event_wq);
+	atomic_set(&stdev->event_cnt, 0);
 
 	minor = ida_simple_get(&switchtec_minor_ida, 0, 0,
 			       GFP_KERNEL);
@@ -670,6 +676,7 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 	return ret;
 
 event_occured:
+	atomic_inc(&stdev->event_cnt);
 	wake_up_interruptible(&stdev->event_wq);
 	return IRQ_HANDLED;
 }
