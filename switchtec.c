@@ -243,7 +243,7 @@ out:
 }
 
 static ssize_t device_version_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
+	struct device_attribute *attr, char *buf)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
 	uint32_t ver;
@@ -255,7 +255,7 @@ static ssize_t device_version_show(struct device *dev,
 static DEVICE_ATTR_RO(device_version);
 
 static ssize_t fw_version_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
+	struct device_attribute *attr, char *buf)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
 	uint32_t ver;
@@ -286,7 +286,7 @@ static ssize_t io_string_show(char *buf, void __iomem *attr, size_t len)
 
 #define DEVICE_ATTR_SYS_INFO_STR(field) \
 static ssize_t field ## _show(struct device *dev, \
-			      struct device_attribute *attr, char *buf) \
+      struct device_attribute *attr, char *buf) \
 { \
 	struct switchtec_dev *stdev = to_stdev(dev); \
 	return io_string_show(buf, &stdev->mmio_sys_info->field, \
@@ -301,7 +301,7 @@ DEVICE_ATTR_SYS_INFO_STR(product_revision);
 DEVICE_ATTR_SYS_INFO_STR(component_vendor);
 
 static ssize_t component_id_show(struct device *dev,
-			       struct device_attribute *attr, char *buf)
+	struct device_attribute *attr, char *buf)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
 	int id = ioread16(&stdev->mmio_sys_info->component_id);
@@ -310,13 +310,29 @@ static ssize_t component_id_show(struct device *dev,
 static DEVICE_ATTR_RO(component_id);
 
 static ssize_t component_revision_show(struct device *dev,
-				       struct device_attribute *attr, char *buf)
+	struct device_attribute *attr, char *buf)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
 	int rev = ioread8(&stdev->mmio_sys_info->component_revision);
 	return sprintf(buf, "%d\n", rev);
 }
 static DEVICE_ATTR_RO(component_revision);
+
+static ssize_t partition_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct switchtec_dev *stdev = to_stdev(dev);
+	return sprintf(buf, "%d\n", stdev->partition);
+}
+static DEVICE_ATTR_RO(partition);
+
+static ssize_t partition_count_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct switchtec_dev *stdev = to_stdev(dev);
+	return sprintf(buf, "%d\n", stdev->partition_count);
+}
+static DEVICE_ATTR_RO(partition_count);
 
 static struct attribute *switchtec_device_attrs[] = {
 	&dev_attr_device_version.attr,
@@ -327,11 +343,12 @@ static struct attribute *switchtec_device_attrs[] = {
 	&dev_attr_component_vendor.attr,
 	&dev_attr_component_id.attr,
 	&dev_attr_component_revision.attr,
+	&dev_attr_partition.attr,
+	&dev_attr_partition_count.attr,
 	NULL,
 };
 
 ATTRIBUTE_GROUPS(switchtec_device);
-
 
 static int switchtec_dev_open(struct inode *inode, struct file *filp)
 {
