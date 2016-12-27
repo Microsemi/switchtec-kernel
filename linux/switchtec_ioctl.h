@@ -45,6 +45,19 @@ struct switchtec_ioctl_fw_info {
 	} partition[SWITCHTEC_IOCTL_NUM_PARTITIONS];
 };
 
-#define SWITCHTEC_IOCTL_FW_INFO _IOR('W', 0x40, struct switchtec_ioctl_fw_info)
+struct switchtec_ioctl_event_summary {
+	__u64 global_summary;
+	__u64 part_event_bitmap;
+	__u32 local_part_event_summary;
+	__u32 part_event_summary[48];
+	__u32 port_event_summary[255];
+};
+
+#define SWITCHTEC_IOCTL_FW_INFO \
+	_IOR('W', 0x40, struct switchtec_ioctl_fw_info)
+#define SWITCHTEC_IOCTL_EVENT_SUMMARY \
+	_IOR('W', 0x41, struct switchtec_ioctl_event_summary)
+
+
 
 #endif

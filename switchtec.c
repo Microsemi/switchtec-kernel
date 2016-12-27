@@ -540,6 +540,37 @@ static int ioctl_fw_info(struct switchtec_dev *stdev,
 	return 0;
 }
 
+static int ioctl_event_summary(struct switchtec_dev *stdev,
+	struct switchtec_user *stuser,
+	struct switchtec_ioctl_event_summary __user *usum)
+{
+	struct switchtec_ioctl_event_summary s = {0};
+	int i;
+	u32 reg;
+
+	s.global_summary = ioread32(&stdev->mmio_sw_event->global_summary);
+	s.part_event_bitmap = ioread32(&stdev->mmio_sw_event->
+				       part_event_bitmap);
+	s.local_part_event_summary = ioread32(&stdev->mmio_part_cfg->
+					      part_event_summary);
+
+	for (i = 0; i < SWITCHTEC_MAX_PFF_CSR; i++) {
+		reg = ioread16(&stdev->mmio_pff_csr[i].vendor_id);
+		if (reg != MICROSEMI_VENDOR_ID)
+			break;
+
+		reg = ioread32(&stdev->mmio_pff_csr[i].port_event_summary);
+		s.port_event_summary[i] = reg;
+	}
+
+	if (copy_to_user(usum, &s, sizeof(s)))
+		return -EFAULT;
+
+	stuser->event_cnt = atomic_read(&stdev->event_cnt);
+
+	return 0;
+}
+
 static long switchtec_dev_ioctl(struct file *filp, unsigned int cmd,
 				unsigned long arg)
 {
@@ -551,6 +582,8 @@ static long switchtec_dev_ioctl(struct file *filp, unsigned int cmd,
 	switch (cmd) {
 	case SWITCHTEC_IOCTL_FW_INFO:
 		return ioctl_fw_info(stdev, argp);
+	case SWITCHTEC_IOCTL_EVENT_SUMMARY:
+		return ioctl_event_summary(stdev, stuser, argp);
 	default:
 		return -ENOTTY;
 	}
