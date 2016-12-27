@@ -596,6 +596,7 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 	stdev->mrpc_busy = 0;
 	INIT_WORK(&stdev->mrpc_work, mrpc_event_work);
 	INIT_DELAYED_WORK(&stdev->mrpc_timeout, mrpc_timeout_work);
+	init_waitqueue_head(&stdev->event_wq);
 
 	minor = ida_simple_get(&switchtec_minor_ida, 0, 0,
 			       GFP_KERNEL);
@@ -638,16 +639,39 @@ err_cdev:
 static irqreturn_t switchtec_event_isr(int irq, void *dev)
 {
 	struct switchtec_dev *stdev = dev;
-	u32 summary;
+	u32 reg;
+	irqreturn_t ret = IRQ_NONE;
+	int i;
 
-	summary = ioread32(&stdev->mmio_part_cfg->part_event_summary);
+	reg = ioread32(&stdev->mmio_part_cfg->part_event_summary);
+	if (reg)
+		ret = IRQ_HANDLED;
 
-	if (summary & SWITCHTEC_PART_CFG_EVENT_MRPC_CMP) {
+	if (reg & SWITCHTEC_PART_CFG_EVENT_MRPC_CMP)
 		schedule_work(&stdev->mrpc_work);
-		return IRQ_HANDLED;
+
+	if (reg & ~SWITCHTEC_PART_CFG_EVENT_MRPC_CMP)
+		goto event_occured;
+
+	reg = ioread32(&stdev->mmio_sw_event->global_summary);
+	if (reg)
+		goto event_occured;
+
+	for (i = 0; i < SWITCHTEC_MAX_PFF_CSR; i++) {
+		reg = ioread16(&stdev->mmio_pff_csr[i].vendor_id);
+		if (reg != MICROSEMI_VENDOR_ID)
+			break;
+
+		reg = ioread32(&stdev->mmio_pff_csr[i].port_event_summary);
+		if (reg)
+			goto event_occured;
 	}
 
-	return IRQ_NONE;
+	return ret;
+
+event_occured:
+	wake_up_interruptible(&stdev->event_wq);
+	return IRQ_HANDLED;
 }
 
 static int switchtec_init_msix_isr(struct switchtec_dev *stdev)

@@ -18,12 +18,14 @@
 
 #include <linux/pci.h>
 #include <linux/cdev.h>
+#include <linux/wait.h>
 
 #define MICROSEMI_VENDOR_ID         0x11f8
 #define MICROSEMI_NTB_CLASSCODE     0x068000
 #define MICROSEMI_MGMT_CLASSCODE    0x058000
 
 #define SWITCHTEC_MRPC_PAYLOAD_SIZE 1024
+#define SWITCHTEC_MAX_PFF_CSR 255
 
 enum {
 	SWITCHTEC_GAS_MRPC_OFFSET       = 0x0000,
@@ -234,6 +236,7 @@ struct switchtec_dev {
 	int mrpc_busy;
 	struct work_struct mrpc_work;
 	struct delayed_work mrpc_timeout;
+	wait_queue_head_t event_wq;
 };
 
 #endif
