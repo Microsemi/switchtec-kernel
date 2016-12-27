@@ -218,6 +218,9 @@ struct switchtec_dev {
 	struct cdev cdev;
 	unsigned int event_irq;
 
+	int partition;
+	int partition_count;
+
 	void __iomem *mmio;
 	struct mrpc_regs __iomem *mmio_mrpc;
 	struct sw_event_regs __iomem *mmio_sw_event;
@@ -225,6 +228,7 @@ struct switchtec_dev {
 	struct flash_info_regs __iomem *mmio_flash_info;
 	struct ntb_info_regs __iomem *mmio_ntb;
 	struct part_cfg_regs __iomem *mmio_part_cfg;
+	struct part_cfg_regs __iomem *mmio_part_cfg_all;
 	struct pff_csr_regs __iomem *mmio_pff_csr;
 
 	/*

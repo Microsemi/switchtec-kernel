@@ -80,6 +80,8 @@ enum switchtec_ioctl_event {
 	SWITCHTEC_IOCTL_EVENT_LINK_STATE,
 };
 
+#define SWITCHTEC_IOCTL_EVENT_LOCAL_PART_IDX -1
+
 struct switchtec_ioctl_event_info {
 	__u32 event_id;
 	__s32 index;

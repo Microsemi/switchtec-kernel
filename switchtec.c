@@ -554,6 +554,12 @@ static int ioctl_event_summary(struct switchtec_dev *stdev,
 	s.local_part_event_summary = ioread32(&stdev->mmio_part_cfg->
 					      part_event_summary);
 
+	for (i = 0; i < stdev->partition_count; i++) {
+		reg = ioread32(&stdev->mmio_part_cfg_all[i].
+			       part_event_summary);
+		s.part_event_summary[i] = reg;
+	}
+
 	for (i = 0; i < SWITCHTEC_MAX_PFF_CSR; i++) {
 		reg = ioread16(&stdev->mmio_pff_csr[i].vendor_id);
 		if (reg != MICROSEMI_VENDOR_ID)
@@ -575,10 +581,15 @@ static uint32_t __iomem *part_ev(uint32_t __iomem *reg,
 				 struct switchtec_dev *stdev,
 				 int index)
 {
-	if (index == -1)
-		return reg;
-	else
+	if (index == SWITCHTEC_IOCTL_EVENT_LOCAL_PART_IDX)
+		index = stdev->partition;
+
+	if (index < 0 || index >= stdev->partition_count)
 		return ERR_PTR(-EINVAL);
+
+	return (void __iomem *) &stdev->mmio_part_cfg_all[index] -
+		(void __iomem *) stdev->mmio_part_cfg_all +
+		(void __iomem *) reg;
 }
 
 static uint32_t __iomem *pff_ev(uint32_t __iomem *reg,
@@ -629,19 +640,19 @@ static int ioctl_event_info(struct switchtec_dev *stdev,
 		reg = &stdev->mmio_sw_event->gpio_interrupt_hdr;
 		break;
 	case SWITCHTEC_IOCTL_EVENT_PART_RESET:
-		reg = part_ev(&stdev->mmio_part_cfg->part_reset_hdr,
+		reg = part_ev(&stdev->mmio_part_cfg_all->part_reset_hdr,
 			      stdev, info.index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_MRPC_COMP:
-		reg = part_ev(&stdev->mmio_part_cfg->mrpc_comp_hdr,
+		reg = part_ev(&stdev->mmio_part_cfg_all->mrpc_comp_hdr,
 			      stdev, info.index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_MRPC_COMP_ASYNC:
-		reg = part_ev(&stdev->mmio_part_cfg->mrpc_comp_async_hdr,
+		reg = part_ev(&stdev->mmio_part_cfg_all->mrpc_comp_async_hdr,
 			      stdev, info.index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_DYN_PART_BIND_COMP:
-		reg = part_ev(&stdev->mmio_part_cfg->dyn_binding_hdr,
+		reg = part_ev(&stdev->mmio_part_cfg_all->dyn_binding_hdr,
 			      stdev, info.index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_AER_IN_P2P:
@@ -835,6 +846,13 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 	if (reg)
 		goto event_occured;
 
+	for (i = 0; i < stdev->partition_count; i++) {
+		reg = ioread32(&stdev->mmio_part_cfg_all[i].
+			       part_event_summary);
+		if (reg)
+			goto event_occured;
+	}
+
 	for (i = 0; i < SWITCHTEC_MAX_PFF_CSR; i++) {
 		reg = ioread16(&stdev->mmio_pff_csr[i].vendor_id);
 		if (reg != MICROSEMI_VENDOR_ID)
@@ -958,9 +976,10 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	stdev->mmio_sys_info = stdev->mmio + SWITCHTEC_GAS_SYS_INFO_OFFSET;
 	stdev->mmio_flash_info = stdev->mmio + SWITCHTEC_GAS_FLASH_INFO_OFFSET;
 	stdev->mmio_ntb = stdev->mmio + SWITCHTEC_GAS_NTB_OFFSET;
-	partition = ioread8(&stdev->mmio_ntb->partition_id);
-	stdev->mmio_part_cfg = stdev->mmio + SWITCHTEC_GAS_PART_CFG_OFFSET +
-		sizeof(struct part_cfg_regs) * partition;
+	stdev->partition = ioread8(&stdev->mmio_ntb->partition_id);
+	stdev->partition_count = ioread8(&stdev->mmio_ntb->partition_count);
+	stdev->mmio_part_cfg_all = stdev->mmio + SWITCHTEC_GAS_PART_CFG_OFFSET;
+	stdev->mmio_part_cfg = &stdev->mmio_part_cfg_all[partition];
 	stdev->mmio_pff_csr = stdev->mmio + SWITCHTEC_GAS_PFF_CSR_OFFSET;
 
 	dev_info(&stdev->dev, "sz: %zx\n", sizeof(*stdev->mmio_pff_csr));
