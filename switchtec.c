@@ -571,6 +571,143 @@ static int ioctl_event_summary(struct switchtec_dev *stdev,
 	return 0;
 }
 
+static uint32_t __iomem *part_ev(uint32_t __iomem *reg,
+				 struct switchtec_dev *stdev,
+				 int index)
+{
+	if (index == -1)
+		return reg;
+	else
+		return ERR_PTR(-EINVAL);
+}
+
+static uint32_t __iomem *pff_ev(uint32_t __iomem *reg,
+				struct switchtec_dev *stdev,
+				int index)
+{
+	if (index < 0 || index >= SWITCHTEC_MAX_PFF_CSR)
+		return ERR_PTR(-EINVAL);
+
+	return (void __iomem *) &stdev->mmio_pff_csr[index] -
+		(void __iomem *) stdev->mmio_pff_csr +
+		(void __iomem *) reg;
+}
+
+static int ioctl_event_info(struct switchtec_dev *stdev,
+	struct switchtec_ioctl_event_info __user *uinfo)
+{
+	int i;
+	struct switchtec_ioctl_event_info info = {0};
+	uint32_t __iomem *reg = ERR_PTR(-EINVAL);;
+
+	if (copy_from_user(&info, uinfo, sizeof(info)))
+		return -EFAULT;
+
+	switch(info.event_id) {
+	case SWITCHTEC_IOCTL_EVENT_STACK_ERROR:
+		reg = &stdev->mmio_sw_event->stack_error_event_hdr;
+		break;
+	case SWITCHTEC_IOCTL_EVENT_PPU_ERROR:
+		reg = &stdev->mmio_sw_event->ppu_error_event_hdr;
+		break;
+	case SWITCHTEC_IOCTL_EVENT_ISP_ERROR:
+		reg = &stdev->mmio_sw_event->isp_error_event_hdr;
+		break;
+	case SWITCHTEC_IOCTL_EVENT_TWI_MRPC_COMP:
+		reg = &stdev->mmio_sw_event->twi_mrpc_comp_hdr;
+		break;
+	case SWITCHTEC_IOCTL_EVENT_TWI_MRPC_COMP_ASYNC:
+		reg = &stdev->mmio_sw_event->twi_mrpc_comp_async_hdr;
+		break;
+	case SWITCHTEC_IOCTL_EVENT_CLI_MRPC_COMP:
+		reg = &stdev->mmio_sw_event->cli_mrpc_comp_async_hdr;
+		break;
+	case SWITCHTEC_IOCTL_EVENT_CLI_MRPC_COMP_ASYNC:
+		reg = &stdev->mmio_sw_event->cli_mrpc_comp_async_hdr;
+		break;
+	case SWITCHTEC_IOCTL_EVENT_GPIO_INT:
+		reg = &stdev->mmio_sw_event->gpio_interrupt_hdr;
+		break;
+	case SWITCHTEC_IOCTL_EVENT_PART_RESET:
+		reg = part_ev(&stdev->mmio_part_cfg->part_reset_hdr,
+			      stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_MRPC_COMP:
+		reg = part_ev(&stdev->mmio_part_cfg->mrpc_comp_hdr,
+			      stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_MRPC_COMP_ASYNC:
+		reg = part_ev(&stdev->mmio_part_cfg->mrpc_comp_async_hdr,
+			      stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_DYN_PART_BIND_COMP:
+		reg = part_ev(&stdev->mmio_part_cfg->dyn_binding_hdr,
+			      stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_AER_IN_P2P:
+		reg = pff_ev(&stdev->mmio_pff_csr->aer_in_p2p_hdr,
+			     stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_AER_IN_VEP:
+		reg = pff_ev(&stdev->mmio_pff_csr->aer_in_vep_hdr,
+			     stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_DPC:
+		reg = pff_ev(&stdev->mmio_pff_csr->dpc_hdr,
+			     stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_CTS:
+		reg = pff_ev(&stdev->mmio_pff_csr->cts_hdr,
+			     stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_HOTPLUG:
+		reg = pff_ev(&stdev->mmio_pff_csr->hotplug_hdr,
+			     stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_IER:
+		reg = pff_ev(&stdev->mmio_pff_csr->ier_hdr,
+			     stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_THRESH:
+		reg = pff_ev(&stdev->mmio_pff_csr->threshold_hdr,
+			     stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_POWER_MGMT:
+		reg = pff_ev(&stdev->mmio_pff_csr->power_mgmt_hdr,
+			     stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_TLP_THROTTLING:
+		reg = pff_ev(&stdev->mmio_pff_csr->tlp_throttling_hdr,
+			     stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_FORCE_SPEED:
+		reg = pff_ev(&stdev->mmio_pff_csr->force_speed_hdr,
+			     stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_CREDIT_TIMEOUT:
+		reg = pff_ev(&stdev->mmio_pff_csr->credit_timeout_hdr,
+			     stdev, info.index);
+		break;
+	case SWITCHTEC_IOCTL_EVENT_LINK_STATE:
+		reg = pff_ev(&stdev->mmio_pff_csr->link_state_hdr,
+			     stdev, info.index);
+		break;
+	default: break;
+	}
+
+	if (IS_ERR(reg))
+		return PTR_ERR(reg);
+
+	info.header = ioread32(&reg[0]);
+	for (i = 0; i < ARRAY_SIZE(info.data); i++)
+		info.data[i] = ioread32(&reg[1+i]);
+
+	if (copy_to_user(uinfo, &info, sizeof(info)))
+		return -EFAULT;
+
+	return 0;
+}
+
 static long switchtec_dev_ioctl(struct file *filp, unsigned int cmd,
 				unsigned long arg)
 {
@@ -584,6 +721,8 @@ static long switchtec_dev_ioctl(struct file *filp, unsigned int cmd,
 		return ioctl_fw_info(stdev, argp);
 	case SWITCHTEC_IOCTL_EVENT_SUMMARY:
 		return ioctl_event_summary(stdev, stuser, argp);
+	case SWITCHTEC_IOCTL_EVENT_INFO:
+		return ioctl_event_info(stdev, argp);
 	default:
 		return -ENOTTY;
 	}
