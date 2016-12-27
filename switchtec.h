@@ -51,23 +51,56 @@ enum mrpc_status {
 	SWITCHTEC_MRPC_STATUS_INTERRUPTED = 0x100,
 };
 
+struct sw_event_regs {
+	u64 event_report_ctrl;
+	u64 reserved1;
+	u64 part_event_bitmap;
+	u64 reserved2;
+	u32 global_summary;
+	u32 reserved3[3];
+	u32 stack_error_event_hdr;
+	u32 stack_error_event_data;
+	u32 reserved4[4];
+	u32 ppu_error_event_hdr;
+	u32 ppu_error_event_data;
+	u32 reserved5[4];
+	u32 isp_error_event_hdr;
+	u32 isp_error_event_data;
+	u32 reserved6[34];
+	u32 twi_mrpc_comp_hdr;
+	u32 twi_mrpc_comp_data;
+	u32 reserved7[4];
+	u32 twi_mrpc_comp_async_hdr;
+	u32 twi_mrpc_comp_async_data;
+	u32 reserved8[4];
+	u32 cli_mrpc_cmp_hdr;
+	u32 cli_mrpc_cmp_data;
+	u32 reserved9[4];
+	u32 cli_mrpc_comp_async_hdr;
+	u32 cli_mrpc_comp_async_data;
+	u32 reserved10[4];
+	u32 gpio_interrupt_hdr;
+	u32 gpio_interrupt_data;
+	u32 reserved11[4];
+} __packed;
+
 struct sys_info_regs {
-	uint32_t device_id;
-	uint32_t device_version;
-	uint32_t firmware_version;
-	uint32_t reserved1;
-	uint32_t vendor_table_revision;
-	uint32_t table_format_version;
-	uint32_t partition_id;
-	uint32_t cfg_file_fmt_version;
-	uint32_t reserved2[58];
-	char     vendor_id[8];
-	char     product_id[16];
-	char     product_revision[4];
-	char     component_vendor[8];
-	uint16_t component_id;
-	uint8_t  component_revision;
-};
+	u32 device_id;
+	u32 device_version;
+	u32 firmware_version;
+	u32 reserved1;
+	u32 vendor_table_revision;
+	u32 table_format_version;
+	u32 partition_id;
+	u32 cfg_file_fmt_version;
+	u32 reserved2[58];
+	char vendor_id[8];
+	char product_id[16];
+	char product_revision[4];
+	char component_vendor[8];
+	u16 component_id;
+	u8 component_revision;
+} __packed;
 
 struct flash_info_regs {
 	uint32_t flash_part_map_upd_idx;
@@ -119,21 +152,62 @@ struct part_cfg_regs {
 	u32 reserved2[3];
 	u32 part_event_summary;
 	u32 reserved3[3];
-	u32 part_reset_event_hdr;
-	u8  part_reset_event_data[20];
-	u32 mrpc_completion_hdr;
-	u8  mrpc_completion_data[20];
-	u32 mrpc_completion_async_hdr;
-	u8  mrpc_completion_async_data[20];
-	u32 dynamic_part_binding_evt_hdr;
-	u8 dynamic_part_binding_evt_data[20];
+	u32 part_reset_hdr;
+	u32 part_reset_data[5];
+	u32 mrpc_comp_hdr;
+	u32 mrpc_comp_data[5];
+	u32 mrpc_comp_async_hdr;
+	u32 mrpc_comp_async_data[5];
+	u32 dyn_binding_hdr;
+	u32 dyn_binding_data[5];
 	u32 reserved4[159];
 } __packed;
 
 enum {
-	SWITCHTEC_PART_CFG_EVENT_MRPC_CMP = 2,
-	SWITCHTEC_PART_CFG_EVENT_MRPC_ASYNC_CMP = 4,
+	SWITCHTEC_PART_CFG_EVENT_RESET = 1 << 0,
+	SWITCHTEC_PART_CFG_EVENT_MRPC_CMP = 1 << 1,
+	SWITCHTEC_PART_CFG_EVENT_MRPC_ASYNC_CMP = 1 << 2,
+	SWITCHTEC_PART_CFG_EVENT_DYN_PART_CMP = 1 << 3,
 };
+
+struct pff_csr_regs {
+	u16 vendor_id;
+	u16 device_id;
+	u32 pci_cfg_header[15];
+	u32 pci_cap_region[48];
+	u32 pcie_cap_region[448];
+	u32 indirect_gas_window[128];
+	u32 indirect_gas_window_off;
+	u32 reserved[127];
+	u32 port_event_summary;
+	u32 reserved2[3];
+	u32 aer_in_p2p_hdr;
+	u32 aer_in_p2p_data[5];
+	u32 aer_in_vep_hdr;
+	u32 aer_in_vep_data[5];
+	u32 dpc_hdr;
+	u32 dpc_data[5];
+	u32 cts_hdr;
+	u32 cts_data[5];
+	u32 reserved3[6];
+	u32 hotplug_hdr;
+	u32 hotplug_data[5];
+	u32 ier_hdr;
+	u32 ier_data[5];
+	u32 threshold_hdr;
+	u32 threshold_data[5];
+	u32 power_mgmt_hdr;
+	u32 power_mgmt_data[5];
+	u32 tlp_throttling_hdr;
+	u32 tlp_throttling_data[5];
+	u32 force_speed_hdr;
+	u32 force_speed_data[5];
+	u32 credit_timeout_hdr;
+	u32 credit_timeout_data[5];
+	u32 link_state_hdr;
+	u32 link_state_data[5];
+	u32 reserved4[174];
+} __packed;
 
 struct switchtec_dev {
 	struct pci_dev *pdev;
@@ -144,10 +218,12 @@ struct switchtec_dev {
 
 	void __iomem *mmio;
 	struct mrpc_regs __iomem *mmio_mrpc;
+	struct sw_event_regs __iomem *mmio_sw_event;
 	struct sys_info_regs __iomem *mmio_sys_info;
 	struct flash_info_regs __iomem *mmio_flash_info;
 	struct ntb_info_regs __iomem *mmio_ntb;
 	struct part_cfg_regs __iomem *mmio_part_cfg;
+	struct pff_csr_regs __iomem *mmio_pff_csr;
 
 	/*
 	 * The mrpc mutex must be held when accessing the other
