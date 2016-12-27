@@ -96,6 +96,4 @@ struct switchtec_ioctl_event_info {
 #define SWITCHTEC_IOCTL_EVENT_INFO \
 	_IOWR('W', 0x42, struct switchtec_ioctl_event_info)
 
-
-
 #endif

@@ -28,7 +28,7 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Microsemi Corporation");
 
 static int max_devices = 16;
-module_param(max_devices, int, S_IRUGO);
+module_param(max_devices, int, 0644);
 MODULE_PARM_DESC(max_devices, "max number of switchtec device instances");
 
 static dev_t switchtec_devt;
@@ -246,7 +246,7 @@ static ssize_t device_version_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
-	uint32_t ver;
+	u32 ver;
 
 	ver = ioread32(&stdev->mmio_sys_info->device_version);
 
@@ -258,7 +258,7 @@ static ssize_t fw_version_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
-	uint32_t ver;
+	u32 ver;
 
 	ver = ioread32(&stdev->mmio_sys_info->firmware_version);
 
@@ -272,13 +272,13 @@ static ssize_t io_string_show(char *buf, void __iomem *attr, size_t len)
 
 	memcpy_fromio(buf, attr, len);
 	buf[len] = '\n';
-	buf[len+1] = 0;
+	buf[len + 1] = 0;
 
-	for (i = len-1; i > 0; i--) {
+	for (i = len - 1; i > 0; i--) {
 		if (buf[i] != ' ')
 			break;
 		buf[i] = '\n';
-		buf[i+1] = 0;
+		buf[i + 1] = 0;
 	}
 
 	return strlen(buf);
@@ -286,14 +286,14 @@ static ssize_t io_string_show(char *buf, void __iomem *attr, size_t len)
 
 #define DEVICE_ATTR_SYS_INFO_STR(field) \
 static ssize_t field ## _show(struct device *dev, \
-      struct device_attribute *attr, char *buf) \
+	struct device_attribute *attr, char *buf) \
 { \
 	struct switchtec_dev *stdev = to_stdev(dev); \
 	return io_string_show(buf, &stdev->mmio_sys_info->field, \
 			    sizeof(stdev->mmio_sys_info->field)); \
 } \
- \
-static DEVICE_ATTR_RO(field);
+\
+static DEVICE_ATTR_RO(field)
 
 DEVICE_ATTR_SYS_INFO_STR(vendor_id);
 DEVICE_ATTR_SYS_INFO_STR(product_id);
@@ -305,6 +305,7 @@ static ssize_t component_id_show(struct device *dev,
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
 	int id = ioread16(&stdev->mmio_sys_info->component_id);
+
 	return sprintf(buf, "PM%04X\n", id);
 }
 static DEVICE_ATTR_RO(component_id);
@@ -314,6 +315,7 @@ static ssize_t component_revision_show(struct device *dev,
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
 	int rev = ioread8(&stdev->mmio_sys_info->component_revision);
+
 	return sprintf(buf, "%d\n", rev);
 }
 static DEVICE_ATTR_RO(component_revision);
@@ -322,6 +324,7 @@ static ssize_t partition_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
+
 	return sprintf(buf, "%d\n", stdev->partition);
 }
 static DEVICE_ATTR_RO(partition);
@@ -330,6 +333,7 @@ static ssize_t partition_count_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
+
 	return sprintf(buf, "%d\n", stdev->partition_count);
 }
 static DEVICE_ATTR_RO(partition_count);
@@ -521,7 +525,7 @@ static int ioctl_fw_info(struct switchtec_dev *stdev,
 {
 	struct switchtec_ioctl_fw_info info = {0};
 	struct flash_info_regs __iomem *fi = stdev->mmio_flash_info;
-	uint32_t active_addr;
+	u32 active_addr;
 
 	info.flash_length = ioread32(&fi->flash_length);
 
@@ -594,9 +598,9 @@ static int ioctl_event_summary(struct switchtec_dev *stdev,
 	return 0;
 }
 
-static uint32_t __iomem *part_ev(uint32_t __iomem *reg,
-				 struct switchtec_dev *stdev,
-				 int index)
+static u32 __iomem *part_ev(u32 __iomem *reg,
+			    struct switchtec_dev *stdev,
+			    int index)
 {
 	if (index == SWITCHTEC_IOCTL_EVENT_LOCAL_PART_IDX)
 		index = stdev->partition;
@@ -604,21 +608,21 @@ static uint32_t __iomem *part_ev(uint32_t __iomem *reg,
 	if (index < 0 || index >= stdev->partition_count)
 		return ERR_PTR(-EINVAL);
 
-	return (void __iomem *) &stdev->mmio_part_cfg_all[index] -
-		(void __iomem *) stdev->mmio_part_cfg_all +
-		(void __iomem *) reg;
+	return (void __iomem *)&stdev->mmio_part_cfg_all[index] -
+		(void __iomem *)stdev->mmio_part_cfg_all +
+		(void __iomem *)reg;
 }
 
-static uint32_t __iomem *pff_ev(uint32_t __iomem *reg,
-				struct switchtec_dev *stdev,
-				int index)
+static u32 __iomem *pff_ev(u32 __iomem *reg,
+			   struct switchtec_dev *stdev,
+			   int index)
 {
 	if (index < 0 || index >= SWITCHTEC_MAX_PFF_CSR)
 		return ERR_PTR(-EINVAL);
 
-	return (void __iomem *) &stdev->mmio_pff_csr[index] -
-		(void __iomem *) stdev->mmio_pff_csr +
-		(void __iomem *) reg;
+	return (void __iomem *)&stdev->mmio_pff_csr[index] -
+		(void __iomem *)stdev->mmio_pff_csr +
+		(void __iomem *)reg;
 }
 
 static int ioctl_event_info(struct switchtec_dev *stdev,
@@ -626,12 +630,12 @@ static int ioctl_event_info(struct switchtec_dev *stdev,
 {
 	int i;
 	struct switchtec_ioctl_event_info info = {0};
-	uint32_t __iomem *reg = ERR_PTR(-EINVAL);;
+	u32 __iomem *reg = ERR_PTR(-EINVAL);
 
 	if (copy_from_user(&info, uinfo, sizeof(info)))
 		return -EFAULT;
 
-	switch(info.event_id) {
+	switch (info.event_id) {
 	case SWITCHTEC_IOCTL_EVENT_STACK_ERROR:
 		reg = &stdev->mmio_sw_event->stack_error_event_hdr;
 		break;
@@ -720,7 +724,8 @@ static int ioctl_event_info(struct switchtec_dev *stdev,
 		reg = pff_ev(&stdev->mmio_pff_csr->link_state_hdr,
 			     stdev, info.index);
 		break;
-	default: break;
+	default:
+		break;
 	}
 
 	if (IS_ERR(reg))
@@ -728,7 +733,7 @@ static int ioctl_event_info(struct switchtec_dev *stdev,
 
 	info.header = ioread32(&reg[0]);
 	for (i = 0; i < ARRAY_SIZE(info.data); i++)
-		info.data[i] = ioread32(&reg[1+i]);
+		info.data[i] = ioread32(&reg[i + 1]);
 
 	if (copy_to_user(uinfo, &info, sizeof(info)))
 		return -EFAULT;
@@ -857,17 +862,17 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 		schedule_work(&stdev->mrpc_work);
 
 	if (reg & ~SWITCHTEC_PART_CFG_EVENT_MRPC_CMP)
-		goto event_occured;
+		goto event_occurred;
 
 	reg = ioread32(&stdev->mmio_sw_event->global_summary);
 	if (reg)
-		goto event_occured;
+		goto event_occurred;
 
 	for (i = 0; i < stdev->partition_count; i++) {
 		reg = ioread32(&stdev->mmio_part_cfg_all[i].
 			       part_event_summary);
 		if (reg)
-			goto event_occured;
+			goto event_occurred;
 	}
 
 	for (i = 0; i < SWITCHTEC_MAX_PFF_CSR; i++) {
@@ -877,12 +882,12 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 
 		reg = ioread32(&stdev->mmio_pff_csr[i].port_event_summary);
 		if (reg)
-			goto event_occured;
+			goto event_occurred;
 	}
 
 	return ret;
 
-event_occured:
+event_occurred:
 	atomic_inc(&stdev->event_cnt);
 	wake_up_interruptible(&stdev->event_wq);
 	return IRQ_HANDLED;

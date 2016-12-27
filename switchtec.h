@@ -105,23 +105,23 @@ struct sys_info_regs {
 } __packed;
 
 struct flash_info_regs {
-	uint32_t flash_part_map_upd_idx;
+	u32 flash_part_map_upd_idx;
 
 	struct active_partition_info {
-		uint32_t address;
-		uint32_t build_version;
-		uint32_t build_string;
+		u32 address;
+		u32 build_version;
+		u32 build_string;
 	} active_img;
 
 	struct active_partition_info active_cfg;
 	struct active_partition_info inactive_img;
 	struct active_partition_info inactive_cfg;
 
-	uint32_t flash_length;
+	u32 flash_length;
 
 	struct partition_info {
-		uint32_t address;
-		uint32_t length;
+		u32 address;
+		u32 length;
 	} cfg0;
 
 	struct partition_info cfg1;
