@@ -890,6 +890,8 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 event_occurred:
 	atomic_inc(&stdev->event_cnt);
 	wake_up_interruptible(&stdev->event_wq);
+	dev_dbg(&stdev->dev, "%s: event\n", __func__);
+
 	return IRQ_HANDLED;
 }
 
