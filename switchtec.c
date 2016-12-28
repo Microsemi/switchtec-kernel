@@ -1018,8 +1018,6 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	stdev->mmio_part_cfg = &stdev->mmio_part_cfg_all[partition];
 	stdev->mmio_pff_csr = stdev->mmio + SWITCHTEC_GAS_PFF_CSR_OFFSET;
 
-	dev_info(&stdev->dev, "sz: %zx\n", sizeof(*stdev->mmio_pff_csr));
-
 	pci_set_drvdata(pdev, stdev);
 
 	return 0;
