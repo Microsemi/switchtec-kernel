@@ -625,17 +625,12 @@ static u32 __iomem *pff_ev(u32 __iomem *reg,
 		(void __iomem *)reg;
 }
 
-static int ioctl_event_info(struct switchtec_dev *stdev,
-	struct switchtec_ioctl_event_info __user *uinfo)
+static u32 __iomem *event_hdr_addr(struct switchtec_dev *stdev,
+				   int event_id, int index)
 {
-	int i;
-	struct switchtec_ioctl_event_info info = {0};
-	u32 __iomem *reg = ERR_PTR(-EINVAL);
+	u32 __iomem *reg;
 
-	if (copy_from_user(&info, uinfo, sizeof(info)))
-		return -EFAULT;
-
-	switch (info.event_id) {
+	switch (event_id) {
 	case SWITCHTEC_IOCTL_EVENT_STACK_ERROR:
 		reg = &stdev->mmio_sw_event->stack_error_event_hdr;
 		break;
@@ -662,81 +657,98 @@ static int ioctl_event_info(struct switchtec_dev *stdev,
 		break;
 	case SWITCHTEC_IOCTL_EVENT_PART_RESET:
 		reg = part_ev(&stdev->mmio_part_cfg_all->part_reset_hdr,
-			      stdev, info.index);
+			      stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_MRPC_COMP:
 		reg = part_ev(&stdev->mmio_part_cfg_all->mrpc_comp_hdr,
-			      stdev, info.index);
+			      stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_MRPC_COMP_ASYNC:
 		reg = part_ev(&stdev->mmio_part_cfg_all->mrpc_comp_async_hdr,
-			      stdev, info.index);
+			      stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_DYN_PART_BIND_COMP:
 		reg = part_ev(&stdev->mmio_part_cfg_all->dyn_binding_hdr,
-			      stdev, info.index);
+			      stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_AER_IN_P2P:
 		reg = pff_ev(&stdev->mmio_pff_csr->aer_in_p2p_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_AER_IN_VEP:
 		reg = pff_ev(&stdev->mmio_pff_csr->aer_in_vep_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_DPC:
 		reg = pff_ev(&stdev->mmio_pff_csr->dpc_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_CTS:
 		reg = pff_ev(&stdev->mmio_pff_csr->cts_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_HOTPLUG:
 		reg = pff_ev(&stdev->mmio_pff_csr->hotplug_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_IER:
 		reg = pff_ev(&stdev->mmio_pff_csr->ier_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_THRESH:
 		reg = pff_ev(&stdev->mmio_pff_csr->threshold_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_POWER_MGMT:
 		reg = pff_ev(&stdev->mmio_pff_csr->power_mgmt_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_TLP_THROTTLING:
 		reg = pff_ev(&stdev->mmio_pff_csr->tlp_throttling_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_FORCE_SPEED:
 		reg = pff_ev(&stdev->mmio_pff_csr->force_speed_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_CREDIT_TIMEOUT:
 		reg = pff_ev(&stdev->mmio_pff_csr->credit_timeout_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	case SWITCHTEC_IOCTL_EVENT_LINK_STATE:
 		reg = pff_ev(&stdev->mmio_pff_csr->link_state_hdr,
-			     stdev, info.index);
+			     stdev, index);
 		break;
 	default:
 		break;
 	}
 
+	return reg;
+}
+
+static int ioctl_event_info(struct switchtec_dev *stdev,
+	struct switchtec_ioctl_event_info __user *uinfo)
+{
+	int i;
+	struct switchtec_ioctl_event_info info;
+	u32 __iomem *reg = ERR_PTR(-EINVAL);
+
+	if (copy_from_user(&info, uinfo, sizeof(info)))
+		return -EFAULT;
+
+	reg = event_hdr_addr(stdev, info.event_id, info.index);
 	if (IS_ERR(reg))
 		return PTR_ERR(reg);
 
-	info.header = ioread32(&reg[0]);
+	info.header = ioread32(reg);
 	for (i = 0; i < ARRAY_SIZE(info.data); i++)
 		info.data[i] = ioread32(&reg[i + 1]);
 
 	if (copy_to_user(uinfo, &info, sizeof(info)))
 		return -EFAULT;
+
+	if (info.clear)
+		iowrite32(1, reg);
 
 	return 0;
 }
