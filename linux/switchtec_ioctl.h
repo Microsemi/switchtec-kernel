@@ -50,7 +50,7 @@ struct switchtec_ioctl_event_summary {
 	__u64 part_event_bitmap;
 	__u32 local_part_event_summary;
 	__u32 part_event_summary[48];
-	__u32 port_event_summary[255];
+	__u32 port_event_summary[48];
 };
 
 enum switchtec_ioctl_event {
