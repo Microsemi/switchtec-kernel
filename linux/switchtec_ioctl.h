@@ -83,11 +83,22 @@ enum switchtec_ioctl_event {
 
 #define SWITCHTEC_IOCTL_EVENT_LOCAL_PART_IDX -1
 
-struct switchtec_ioctl_event_info {
+#define SWITCHTEC_IOCTL_EVENT_FLAG_CLEAR     (1 << 0)
+#define SWITCHTEC_IOCTL_EVENT_FLAG_EN_POLL   (1 << 1)
+#define SWITCHTEC_IOCTL_EVENT_FLAG_EN_LOG    (1 << 2)
+#define SWITCHTEC_IOCTL_EVENT_FLAG_EN_CLI    (1 << 3)
+#define SWITCHTEC_IOCTL_EVENT_FLAG_EN_FATAL  (1 << 4)
+#define SWITCHTEC_IOCTL_EVENT_FLAG_DIS_POLL  (1 << 5)
+#define SWITCHTEC_IOCTL_EVENT_FLAG_DIS_LOG   (1 << 6)
+#define SWITCHTEC_IOCTL_EVENT_FLAG_DIS_CLI   (1 << 7)
+#define SWITCHTEC_IOCTL_EVENT_FLAG_DIS_FATAL (1 << 8)
+
+struct switchtec_ioctl_event_ctl {
 	__u32 event_id;
 	__s32 index;
-	__u32 clear;
-	__u32 header;
+	__u32 flags;
+	__u16 occurred;
+	__u16 count;
 	__u32 data[5];
 };
 
@@ -95,7 +106,7 @@ struct switchtec_ioctl_event_info {
 	_IOR('W', 0x40, struct switchtec_ioctl_fw_info)
 #define SWITCHTEC_IOCTL_EVENT_SUMMARY \
 	_IOR('W', 0x41, struct switchtec_ioctl_event_summary)
-#define SWITCHTEC_IOCTL_EVENT_INFO \
-	_IOWR('W', 0x42, struct switchtec_ioctl_event_info)
+#define SWITCHTEC_IOCTL_EVENT_CTL \
+	_IOWR('W', 0x42, struct switchtec_ioctl_event_ctl)
 
 #endif
