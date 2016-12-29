@@ -87,6 +87,7 @@ enum switchtec_ioctl_event {
 };
 
 #define SWITCHTEC_IOCTL_EVENT_LOCAL_PART_IDX -1
+#define SWITCHTEC_IOCTL_EVENT_IDX_ALL -2
 
 #define SWITCHTEC_IOCTL_EVENT_FLAG_CLEAR     (1 << 0)
 #define SWITCHTEC_IOCTL_EVENT_FLAG_EN_POLL   (1 << 1)

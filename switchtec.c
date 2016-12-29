@@ -682,59 +682,90 @@ static u32 __iomem *event_hdr_addr(struct switchtec_dev *stdev,
 	return event_regs[event_id].map_reg(stdev, off, index);
 }
 
-static int ioctl_event_ctl(struct switchtec_dev *stdev,
-	struct switchtec_ioctl_event_ctl __user *uctl)
+static int event_ctl(struct switchtec_dev *stdev,
+		     struct switchtec_ioctl_event_ctl *ctl)
 {
 	int i;
-	struct switchtec_ioctl_event_ctl ctl;
-	u32 __iomem *reg = ERR_PTR(-EINVAL);
+	u32 __iomem *reg;
 	u32 hdr;
 
-	if (copy_from_user(&ctl, uctl, sizeof(ctl)))
-		return -EFAULT;
-
-	reg = event_hdr_addr(stdev, ctl.event_id, ctl.index);
+	reg = event_hdr_addr(stdev, ctl->event_id, ctl->index);
 	if (IS_ERR(reg))
 		return PTR_ERR(reg);
 
 	hdr = ioread32(reg);
-	for (i = 0; i < ARRAY_SIZE(ctl.data); i++)
-		ctl.data[i] = ioread32(&reg[i + 1]);
+	for (i = 0; i < ARRAY_SIZE(ctl->data); i++)
+		ctl->data[i] = ioread32(&reg[i + 1]);
 
-	ctl.occurred = hdr & SWITCHTEC_EVENT_OCCURRED;
-	ctl.count = (hdr >> 5) & 0xFF;
+	ctl->occurred = hdr & SWITCHTEC_EVENT_OCCURRED;
+	ctl->count = (hdr >> 5) & 0xFF;
 
-	if (!(ctl.flags & SWITCHTEC_IOCTL_EVENT_FLAG_CLEAR))
+	if (!(ctl->flags & SWITCHTEC_IOCTL_EVENT_FLAG_CLEAR))
 		hdr &= ~SWITCHTEC_EVENT_CLEAR;
-	if (ctl.flags & SWITCHTEC_IOCTL_EVENT_FLAG_EN_POLL)
+	if (ctl->flags & SWITCHTEC_IOCTL_EVENT_FLAG_EN_POLL)
 		hdr |= SWITCHTEC_EVENT_EN_IRQ;
-	if (ctl.flags & SWITCHTEC_IOCTL_EVENT_FLAG_DIS_POLL)
+	if (ctl->flags & SWITCHTEC_IOCTL_EVENT_FLAG_DIS_POLL)
 		hdr &= ~SWITCHTEC_EVENT_EN_IRQ;
-	if (ctl.flags & SWITCHTEC_IOCTL_EVENT_FLAG_EN_LOG)
+	if (ctl->flags & SWITCHTEC_IOCTL_EVENT_FLAG_EN_LOG)
 		hdr |= SWITCHTEC_EVENT_EN_LOG;
-	if (ctl.flags & SWITCHTEC_IOCTL_EVENT_FLAG_DIS_LOG)
+	if (ctl->flags & SWITCHTEC_IOCTL_EVENT_FLAG_DIS_LOG)
 		hdr &= ~SWITCHTEC_EVENT_EN_LOG;
-	if (ctl.flags & SWITCHTEC_IOCTL_EVENT_FLAG_EN_CLI)
+	if (ctl->flags & SWITCHTEC_IOCTL_EVENT_FLAG_EN_CLI)
 		hdr |= SWITCHTEC_EVENT_EN_CLI;
-	if (ctl.flags & SWITCHTEC_IOCTL_EVENT_FLAG_DIS_CLI)
+	if (ctl->flags & SWITCHTEC_IOCTL_EVENT_FLAG_DIS_CLI)
 		hdr &= ~SWITCHTEC_EVENT_EN_CLI;
-	if (ctl.flags & SWITCHTEC_IOCTL_EVENT_FLAG_EN_FATAL)
+	if (ctl->flags & SWITCHTEC_IOCTL_EVENT_FLAG_EN_FATAL)
 		hdr |= SWITCHTEC_EVENT_FATAL;
-	if (ctl.flags & SWITCHTEC_IOCTL_EVENT_FLAG_DIS_FATAL)
+	if (ctl->flags & SWITCHTEC_IOCTL_EVENT_FLAG_DIS_FATAL)
 		hdr &= ~SWITCHTEC_EVENT_FATAL;
 
-	if (ctl.flags)
+	if (ctl->flags)
 		iowrite32(hdr, reg);
 
-	ctl.flags = 0;
+	ctl->flags = 0;
 	if (hdr & SWITCHTEC_EVENT_EN_IRQ)
-		ctl.flags |= SWITCHTEC_IOCTL_EVENT_FLAG_EN_POLL;
+		ctl->flags |= SWITCHTEC_IOCTL_EVENT_FLAG_EN_POLL;
 	if (hdr & SWITCHTEC_EVENT_EN_LOG)
-		ctl.flags |= SWITCHTEC_IOCTL_EVENT_FLAG_EN_LOG;
+		ctl->flags |= SWITCHTEC_IOCTL_EVENT_FLAG_EN_LOG;
 	if (hdr & SWITCHTEC_EVENT_EN_CLI)
-		ctl.flags |= SWITCHTEC_IOCTL_EVENT_FLAG_EN_CLI;
+		ctl->flags |= SWITCHTEC_IOCTL_EVENT_FLAG_EN_CLI;
 	if (hdr & SWITCHTEC_EVENT_FATAL)
-		ctl.flags |= SWITCHTEC_IOCTL_EVENT_FLAG_EN_FATAL;
+		ctl->flags |= SWITCHTEC_IOCTL_EVENT_FLAG_EN_FATAL;
+
+	return 0;
+}
+
+static int ioctl_event_ctl(struct switchtec_dev *stdev,
+	struct switchtec_ioctl_event_ctl __user *uctl)
+{
+	int ret;
+	int nr_idxs;
+	struct switchtec_ioctl_event_ctl ctl;
+
+	if (copy_from_user(&ctl, uctl, sizeof(ctl)))
+		return -EFAULT;
+
+	if (ctl.event_id > SWITCHTEC_IOCTL_MAX_EVENTS)
+		return -EINVAL;
+
+	if (ctl.index == SWITCHTEC_IOCTL_EVENT_IDX_ALL) {
+		if (event_regs[ctl.event_id].map_reg == global_ev_reg)
+			nr_idxs = 1;
+		else if (event_regs[ctl.event_id].map_reg == part_ev_reg)
+			nr_idxs = stdev->partition_count;
+		else if (event_regs[ctl.event_id].map_reg == pff_ev_reg)
+			nr_idxs = stdev->pff_csr_count;
+
+		for (ctl.index = 0; ctl.index < nr_idxs; ctl.index++) {
+			ret = event_ctl(stdev, &ctl);
+			if (ret < 0)
+				return ret;
+		}
+	} else {
+		ret = event_ctl(stdev, &ctl);
+		if (ret < 0)
+			return ret;
+	}
 
 	if (copy_to_user(uctl, &ctl, sizeof(ctl)))
 		return -EFAULT;
