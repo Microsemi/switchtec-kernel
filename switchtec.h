@@ -75,22 +75,32 @@ struct sw_event_regs {
 	u32 reserved5[4];
 	u32 isp_error_event_hdr;
 	u32 isp_error_event_data;
-	u32 reserved6[34];
+	u32 reserved6[4];
+	u32 sys_reset_event_hdr;
+	u32 reserved7[5];
+	u32 fw_exception_hdr;
+	u32 reserved8[5];
+	u32 fw_nmi_hdr;
+	u32 reserved9[5];
+	u32 fw_non_fatal_hdr;
+	u32 reserved10[5];
+	u32 fw_fatal_hdr;
+	u32 reserved11[5];
 	u32 twi_mrpc_comp_hdr;
 	u32 twi_mrpc_comp_data;
-	u32 reserved7[4];
+	u32 reserved12[4];
 	u32 twi_mrpc_comp_async_hdr;
 	u32 twi_mrpc_comp_async_data;
-	u32 reserved8[4];
+	u32 reserved13[4];
 	u32 cli_mrpc_comp_hdr;
 	u32 cli_mrpc_comp_data;
-	u32 reserved9[4];
+	u32 reserved14[4];
 	u32 cli_mrpc_comp_async_hdr;
 	u32 cli_mrpc_comp_async_data;
-	u32 reserved10[4];
+	u32 reserved15[4];
 	u32 gpio_interrupt_hdr;
 	u32 gpio_interrupt_data;
-	u32 reserved11[4];
+	u32 reserved16[4];
 } __packed;
 
 struct sys_info_regs {
