@@ -891,8 +891,8 @@ static int mask_event(struct switchtec_dev *stdev, int eid, int idx)
 	if (!(hdr & SWITCHTEC_EVENT_OCCURRED && hdr & SWITCHTEC_EVENT_EN_IRQ))
 		return 0;
 
-	dev_dbg(&stdev->dev, "%s: %d %x\n", __func__, eid, hdr);
-	hdr &= ~SWITCHTEC_EVENT_EN_IRQ;
+	dev_dbg(&stdev->dev, "%s: %d %d %x\n", __func__, eid, idx, hdr);
+	hdr &= ~(SWITCHTEC_EVENT_EN_IRQ | SWITCHTEC_EVENT_OCCURRED);
 	iowrite32(hdr, hdr_reg);
 
 	return 1;
@@ -906,7 +906,7 @@ static int mask_all_events(struct switchtec_dev *stdev, int eid)
 	if (event_regs[eid].map_reg == part_ev_reg) {
 		for (idx = 0; idx < stdev->partition_count; idx++)
 			count += mask_event(stdev, eid, idx);
-	} else if (event_regs[eid].map_reg == part_ev_reg) {
+	} else if (event_regs[eid].map_reg == pff_ev_reg) {
 		for (idx = 0; idx < stdev->pff_csr_count; idx++)
 			count += mask_event(stdev, eid, idx);
 	} else {
