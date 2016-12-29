@@ -198,7 +198,7 @@ struct pff_csr_regs {
 	u32 indirect_gas_window[128];
 	u32 indirect_gas_window_off;
 	u32 reserved[127];
-	u32 port_event_summary;
+	u32 pff_event_summary;
 	u32 reserved2[3];
 	u32 aer_in_p2p_hdr;
 	u32 aer_in_p2p_data[5];
