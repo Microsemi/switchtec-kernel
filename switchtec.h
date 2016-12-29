@@ -75,8 +75,8 @@ struct sw_event_regs {
 	u32 twi_mrpc_comp_async_hdr;
 	u32 twi_mrpc_comp_async_data;
 	u32 reserved8[4];
-	u32 cli_mrpc_cmp_hdr;
-	u32 cli_mrpc_cmp_data;
+	u32 cli_mrpc_comp_hdr;
+	u32 cli_mrpc_comp_data;
 	u32 reserved9[4];
 	u32 cli_mrpc_comp_async_hdr;
 	u32 cli_mrpc_comp_async_data;
@@ -220,6 +220,7 @@ struct switchtec_dev {
 
 	int partition;
 	int partition_count;
+	int pff_csr_count;
 
 	void __iomem *mmio;
 	struct mrpc_regs __iomem *mmio_mrpc;
