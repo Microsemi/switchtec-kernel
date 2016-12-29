@@ -810,52 +810,71 @@ err_cdev:
 	return ERR_PTR(rc);
 }
 
+static int mask_event(struct switchtec_dev *stdev, int eid, int idx)
+{
+	size_t off = event_regs[eid].offset;
+	u32 __iomem *hdr_reg;
+	u32 hdr;
+
+	hdr_reg = event_regs[eid].map_reg(stdev, off, idx);
+	hdr = ioread32(hdr_reg);
+
+	if (!(hdr & SWITCHTEC_EVENT_OCCURRED && hdr & SWITCHTEC_EVENT_EN_IRQ))
+		return 0;
+
+	dev_dbg(&stdev->dev, "%s: %d %x\n", __func__, eid, hdr);
+	hdr &= ~SWITCHTEC_EVENT_EN_IRQ;
+	iowrite32(hdr, hdr_reg);
+
+	return 1;
+}
+
+static int mask_all_events(struct switchtec_dev *stdev, int eid)
+{
+	int idx;
+	int count = 0;
+
+	if (event_regs[eid].map_reg == part_ev_reg) {
+		for (idx = 0; idx < stdev->partition_count; idx++)
+			count += mask_event(stdev, eid, idx);
+	} else if (event_regs[eid].map_reg == part_ev_reg) {
+		for (idx = 0; idx < stdev->pff_csr_count; idx++)
+			count += mask_event(stdev, eid, idx);
+	} else {
+		count += mask_event(stdev, eid, 0);
+	}
+
+	return count;
+}
+
 static irqreturn_t switchtec_event_isr(int irq, void *dev)
 {
 	struct switchtec_dev *stdev = dev;
 	u32 reg;
 	irqreturn_t ret = IRQ_NONE;
-	int i;
+	int eid, event_count = 0;
 
-	reg = ioread32(&stdev->mmio_part_cfg->part_event_summary);
-	if (reg)
+	reg = ioread32(&stdev->mmio_part_cfg->mrpc_comp_hdr);
+	if (reg & SWITCHTEC_EVENT_OCCURRED) {
+		dev_dbg(&stdev->dev, "%s: mrpc comp\n", __func__);
 		ret = IRQ_HANDLED;
-
-	if (reg & SWITCHTEC_PART_CFG_EVENT_MRPC_CMP)
 		schedule_work(&stdev->mrpc_work);
-
-	if (reg & ~SWITCHTEC_PART_CFG_EVENT_MRPC_CMP)
-		goto event_occurred;
-
-	reg = ioread32(&stdev->mmio_sw_event->global_summary);
-	if (reg)
-		goto event_occurred;
-
-	for (i = 0; i < stdev->partition_count; i++) {
-		reg = ioread32(&stdev->mmio_part_cfg_all[i].
-			       part_event_summary);
-		if (reg)
-			goto event_occurred;
+		iowrite32(reg, &stdev->mmio_part_cfg->mrpc_comp_hdr);
 	}
 
-	for (i = 0; i < SWITCHTEC_MAX_PFF_CSR; i++) {
-		reg = ioread16(&stdev->mmio_pff_csr[i].vendor_id);
-		if (reg != MICROSEMI_VENDOR_ID)
-			break;
+	for (eid = 0; eid < SWITCHTEC_IOCTL_MAX_EVENTS; eid++)
+		event_count += mask_all_events(stdev, eid);
 
-		reg = ioread32(&stdev->mmio_pff_csr[i].port_event_summary);
-		if (reg)
-			goto event_occurred;
+	if (event_count) {
+		atomic_inc(&stdev->event_cnt);
+		wake_up_interruptible(&stdev->event_wq);
+		dev_dbg(&stdev->dev, "%s: %d events\n", __func__,
+			event_count);
+		return IRQ_HANDLED;
 	}
+
 
 	return ret;
-
-event_occurred:
-	atomic_inc(&stdev->event_cnt);
-	wake_up_interruptible(&stdev->event_wq);
-	dev_dbg(&stdev->dev, "%s: event\n", __func__);
-
-	return IRQ_HANDLED;
 }
 
 static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
@@ -978,6 +997,10 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	}
 
 	stdev->pff_csr_count = i;
+
+	iowrite32(SWITCHTEC_EVENT_CLEAR |
+		  SWITCHTEC_EVENT_EN_IRQ,
+		  &stdev->mmio_part_cfg->mrpc_comp_hdr);
 
 	pci_set_drvdata(pdev, stdev);
 
