@@ -108,11 +108,22 @@ struct switchtec_ioctl_event_ctl {
 	__u32 data[5];
 };
 
+#define SWITCHTEC_IOCTL_PFF_VEP 100
+struct switchtec_ioctl_pff_port {
+	__u32 pff;
+	__u32 partition;
+	__u32 port;
+};
+
 #define SWITCHTEC_IOCTL_FW_INFO \
 	_IOR('W', 0x40, struct switchtec_ioctl_fw_info)
 #define SWITCHTEC_IOCTL_EVENT_SUMMARY \
 	_IOR('W', 0x41, struct switchtec_ioctl_event_summary)
 #define SWITCHTEC_IOCTL_EVENT_CTL \
 	_IOWR('W', 0x42, struct switchtec_ioctl_event_ctl)
+#define SWITCHTEC_IOCTL_PFF_TO_PORT \
+	_IOWR('W', 0x43, struct switchtec_ioctl_pff_port)
+#define SWITCHTEC_IOCTL_PORT_TO_PFF \
+	_IOWR('W', 0x44, struct switchtec_ioctl_pff_port)
 
 #endif

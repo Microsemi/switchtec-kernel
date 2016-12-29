@@ -773,6 +773,89 @@ static int ioctl_event_ctl(struct switchtec_dev *stdev,
 	return 0;
 }
 
+static int ioctl_pff_to_port(struct switchtec_dev *stdev,
+			     struct switchtec_ioctl_pff_port *up)
+{
+	int i, part;
+	u32 reg;
+	struct part_cfg_regs *pcfg;
+	struct switchtec_ioctl_pff_port p;
+
+	if (copy_from_user(&p, up, sizeof(p)))
+		return -EFAULT;
+
+	p.port = -1;
+	for (part = 0; part < stdev->partition_count; part++) {
+		pcfg = &stdev->mmio_part_cfg_all[part];
+		p.partition = part;
+
+		reg = ioread32(&pcfg->usp_pff_inst_id);
+		if (reg == p.pff) {
+			p.port = 0;
+			break;
+		}
+
+		reg = ioread32(&pcfg->vep_pff_inst_id);
+		if (reg == p.pff) {
+			p.port = SWITCHTEC_IOCTL_PFF_VEP;
+			break;
+		}
+
+		for (i = 0; i < ARRAY_SIZE(pcfg->dsp_pff_inst_id); i++) {
+			reg = ioread32(&pcfg->dsp_pff_inst_id[i]);
+			if (reg != p.pff)
+				continue;
+
+			p.port = i + 1;
+			break;
+		}
+
+		if (p.port != -1)
+			break;
+	}
+
+	if (copy_to_user(up, &p, sizeof(p)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static int ioctl_port_to_pff(struct switchtec_dev *stdev,
+			     struct switchtec_ioctl_pff_port *up)
+{
+	struct switchtec_ioctl_pff_port p;
+	struct part_cfg_regs *pcfg;
+
+	if (copy_from_user(&p, up, sizeof(p)))
+		return -EFAULT;
+
+	if (p.partition == SWITCHTEC_IOCTL_EVENT_LOCAL_PART_IDX)
+		pcfg = stdev->mmio_part_cfg;
+	else if (p.partition < stdev->partition_count)
+		pcfg = &stdev->mmio_part_cfg_all[p.partition];
+	else
+		return -EINVAL;
+
+	switch (p.port) {
+	case 0:
+		p.pff = ioread32(&pcfg->usp_pff_inst_id);
+		break;
+	case SWITCHTEC_IOCTL_PFF_VEP:
+		p.pff = ioread32(&pcfg->vep_pff_inst_id);
+		break;
+	default:
+		if (p.port > ARRAY_SIZE(pcfg->dsp_pff_inst_id))
+			return -EINVAL;
+		p.pff = ioread32(&pcfg->dsp_pff_inst_id[p.port - 1]);
+		break;
+	}
+
+	if (copy_to_user(up, &p, sizeof(p)))
+		return -EFAULT;
+
+	return 0;
+}
+
 static long switchtec_dev_ioctl(struct file *filp, unsigned int cmd,
 				unsigned long arg)
 {
@@ -788,6 +871,10 @@ static long switchtec_dev_ioctl(struct file *filp, unsigned int cmd,
 		return ioctl_event_summary(stdev, stuser, argp);
 	case SWITCHTEC_IOCTL_EVENT_CTL:
 		return ioctl_event_ctl(stdev, argp);
+	case SWITCHTEC_IOCTL_PFF_TO_PORT:
+		return ioctl_pff_to_port(stdev, argp);
+	case SWITCHTEC_IOCTL_PORT_TO_PFF:
+		return ioctl_port_to_pff(stdev, argp);
 	default:
 		return -ENOTTY;
 	}
