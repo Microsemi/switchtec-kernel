@@ -163,7 +163,7 @@ struct part_cfg_regs {
 	u32 usp_port_mode;
 	u32 usp_pff_inst_id;
 	u32 vep_pff_inst_id;
-	u32 dsp_inst_id[47];
+	u32 dsp_pff_inst_id[47];
 	u32 reserved1[11];
 	u16 vep_vector_number;
 	u16 usp_vector_number;
@@ -238,6 +238,7 @@ struct switchtec_dev {
 	int partition;
 	int partition_count;
 	int pff_csr_count;
+	char pff_local[SWITCHTEC_MAX_PFF_CSR];
 
 	void __iomem *mmio;
 	struct mrpc_regs __iomem *mmio_mrpc;

@@ -907,8 +907,11 @@ static int mask_all_events(struct switchtec_dev *stdev, int eid)
 		for (idx = 0; idx < stdev->partition_count; idx++)
 			count += mask_event(stdev, eid, idx);
 	} else if (event_regs[eid].map_reg == pff_ev_reg) {
-		for (idx = 0; idx < stdev->pff_csr_count; idx++)
+		for (idx = 0; idx < stdev->pff_csr_count; idx++) {
+			if (!stdev->pff_local[idx])
+				continue;
 			count += mask_event(stdev, eid, idx);
+		}
 	} else {
 		count += mask_event(stdev, eid, 0);
 	}
@@ -1029,13 +1032,40 @@ static void switchtec_deinit_isr(struct switchtec_dev *stdev)
 	pci_disable_msi(stdev->pdev);
 }
 
+static void init_pff(struct switchtec_dev *stdev)
+{
+	int i;
+	u32 reg;
+	struct part_cfg_regs *pcfg = stdev->mmio_part_cfg;
+
+	for (i = 0; i < SWITCHTEC_MAX_PFF_CSR; i++) {
+		reg = ioread16(&stdev->mmio_pff_csr[i].vendor_id);
+		if (reg != MICROSEMI_VENDOR_ID)
+			break;
+	}
+
+	stdev->pff_csr_count = i;
+
+	reg = ioread32(&pcfg->usp_pff_inst_id);
+	if (reg < SWITCHTEC_MAX_PFF_CSR)
+		stdev->pff_local[reg] = 1;
+
+	reg = ioread32(&pcfg->vep_pff_inst_id);
+	if (reg < SWITCHTEC_MAX_PFF_CSR)
+		stdev->pff_local[reg] = 1;
+
+	for (i = 0; i < ARRAY_SIZE(pcfg->dsp_pff_inst_id); i++) {
+		reg = ioread32(&pcfg->dsp_pff_inst_id[i]);
+		if (reg < SWITCHTEC_MAX_PFF_CSR)
+			stdev->pff_local[reg] = 1;
+	}
+}
+
 static int switchtec_init_pci(struct switchtec_dev *stdev,
 			      struct pci_dev *pdev)
 {
 	int rc;
 	int partition;
-	int i;
-	u32 reg;
 
 	rc = pcim_enable_device(pdev);
 	if (rc)
@@ -1059,13 +1089,7 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	stdev->mmio_part_cfg = &stdev->mmio_part_cfg_all[partition];
 	stdev->mmio_pff_csr = stdev->mmio + SWITCHTEC_GAS_PFF_CSR_OFFSET;
 
-	for (i = 0; i < SWITCHTEC_MAX_PFF_CSR; i++) {
-		reg = ioread16(&stdev->mmio_pff_csr[i].vendor_id);
-		if (reg != MICROSEMI_VENDOR_ID)
-			break;
-	}
-
-	stdev->pff_csr_count = i;
+	init_pff(stdev);
 
 	iowrite32(SWITCHTEC_EVENT_CLEAR |
 		  SWITCHTEC_EVENT_EN_IRQ,
