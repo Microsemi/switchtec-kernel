@@ -440,7 +440,7 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 		return -ENXIO;
 
 	if (size < sizeof(stuser->cmd) ||
-	    size >= sizeof(stuser->cmd) + SWITCHTEC_MRPC_PAYLOAD_SIZE)
+	    size > sizeof(stuser->cmd) + SWITCHTEC_MRPC_PAYLOAD_SIZE)
 		return -EINVAL;
 
 	if (stuser->state == MRPC_IDLE)
