@@ -117,7 +117,7 @@ static void stuser_set_state(struct switchtec_user *stuser,
 
 static int stdev_is_alive(struct switchtec_dev *stdev)
 {
-	return stdev->mmio != NULL;
+	return stdev->mmio;
 }
 
 static void mrpc_complete_cmd(struct switchtec_dev *stdev);
@@ -597,7 +597,6 @@ static int ioctl_event_summary(struct switchtec_dev *stdev,
 
 	return 0;
 }
-
 
 static u32 __iomem *global_ev_reg(struct switchtec_dev *stdev,
 				  size_t offset, int index)
