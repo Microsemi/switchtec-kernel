@@ -815,14 +815,11 @@ static int ioctl_event_summary(struct switchtec_dev *stdev,
 	u32 reg;
 
 	s.global = ioread32(&stdev->mmio_sw_event->global_summary);
-	s.part_bitmap = ioread32(&stdev->mmio_sw_event->
-				 part_event_bitmap);
-	s.local_part = ioread32(&stdev->mmio_part_cfg->
-				part_event_summary);
+	s.part_bitmap = ioread32(&stdev->mmio_sw_event->part_event_bitmap);
+	s.local_part = ioread32(&stdev->mmio_part_cfg->part_event_summary);
 
 	for (i = 0; i < stdev->partition_count; i++) {
-		reg = ioread32(&stdev->mmio_part_cfg_all[i].
-			       part_event_summary);
+		reg = ioread32(&stdev->mmio_part_cfg_all[i].part_event_summary);
 		s.part[i] = reg;
 	}
 
