@@ -16,7 +16,6 @@ enables some additional functionality. This includes:
 The switchtec kernel module implements this functionality.
 
 
-
 Interface
 =========
 
