@@ -117,7 +117,7 @@ static void stuser_set_state(struct switchtec_user *stuser,
 
 static int stdev_is_alive(struct switchtec_dev *stdev)
 {
-	return stdev->mmio;
+	return stdev->mmio != NULL;
 }
 
 static void mrpc_complete_cmd(struct switchtec_dev *stdev);
@@ -754,6 +754,8 @@ static int ioctl_event_ctl(struct switchtec_dev *stdev,
 			nr_idxs = stdev->partition_count;
 		else if (event_regs[ctl.event_id].map_reg == pff_ev_reg)
 			nr_idxs = stdev->pff_csr_count;
+		else
+			return -EINVAL;
 
 		for (ctl.index = 0; ctl.index < nr_idxs; ctl.index++) {
 			ret = event_ctl(stdev, &ctl);
@@ -1150,7 +1152,6 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 			      struct pci_dev *pdev)
 {
 	int rc;
-	int partition;
 
 	rc = pcim_enable_device(pdev);
 	if (rc)
@@ -1171,7 +1172,7 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	stdev->partition = ioread8(&stdev->mmio_ntb->partition_id);
 	stdev->partition_count = ioread8(&stdev->mmio_ntb->partition_count);
 	stdev->mmio_part_cfg_all = stdev->mmio + SWITCHTEC_GAS_PART_CFG_OFFSET;
-	stdev->mmio_part_cfg = &stdev->mmio_part_cfg_all[partition];
+	stdev->mmio_part_cfg = &stdev->mmio_part_cfg_all[stdev->partition];
 	stdev->mmio_pff_csr = stdev->mmio + SWITCHTEC_GAS_PFF_CSR_OFFSET;
 
 	init_pff(stdev);
