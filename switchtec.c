@@ -989,6 +989,9 @@ static int ioctl_event_ctl(struct switchtec_dev *stdev,
 	if (ctl.event_id > SWITCHTEC_IOCTL_MAX_EVENTS)
 		return -EINVAL;
 
+	if (ctl.flags & SWITCHTEC_IOCTL_EVENT_FLAG_UNUSED)
+		return -EINVAL;
+
 	if (ctl.index == SWITCHTEC_IOCTL_EVENT_IDX_ALL) {
 		if (event_regs[ctl.event_id].map_reg == global_ev_reg)
 			nr_idxs = 1;

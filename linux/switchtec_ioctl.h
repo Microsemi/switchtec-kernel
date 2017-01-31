@@ -49,6 +49,7 @@ struct switchtec_ioctl_event_summary {
 	__u64 global;
 	__u64 part_bitmap;
 	__u32 local_part;
+	__u32 padding;
 	__u32 part[48];
 	__u32 pff[48];
 };
@@ -98,13 +99,14 @@ enum switchtec_ioctl_event {
 #define SWITCHTEC_IOCTL_EVENT_FLAG_DIS_LOG   (1 << 6)
 #define SWITCHTEC_IOCTL_EVENT_FLAG_DIS_CLI   (1 << 7)
 #define SWITCHTEC_IOCTL_EVENT_FLAG_DIS_FATAL (1 << 8)
+#define SWITCHTEC_IOCTL_EVENT_FLAG_UNUSED    (~0x1ff)
 
 struct switchtec_ioctl_event_ctl {
 	__u32 event_id;
 	__s32 index;
 	__u32 flags;
-	__u16 occurred;
-	__u16 count;
+	__u32 occurred;
+	__u32 count;
 	__u32 data[5];
 };
 
