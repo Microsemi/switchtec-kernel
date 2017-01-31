@@ -757,48 +757,88 @@ static unsigned int switchtec_dev_poll(struct file *filp, poll_table *wait)
 	return ret;
 }
 
-static void set_fw_info_part(struct switchtec_ioctl_fw_info *info,
-			     enum switchtec_ioctl_partition p,
-			     struct partition_info __iomem *pi)
+static int ioctl_flash_info(struct switchtec_dev *stdev,
+			    struct switchtec_ioctl_flash_info __user *uinfo)
 {
-	info->partition[p].address = ioread32(&pi->address);
-	info->partition[p].length = ioread32(&pi->length);
-}
-
-static int ioctl_fw_info(struct switchtec_dev *stdev,
-			 struct switchtec_ioctl_fw_info __user *uinfo)
-{
-	struct switchtec_ioctl_fw_info info = {0};
+	struct switchtec_ioctl_flash_info info = {0};
 	struct flash_info_regs __iomem *fi = stdev->mmio_flash_info;
-	u32 active_addr;
 
 	info.flash_length = ioread32(&fi->flash_length);
+	info.num_partitions = SWITCHTEC_IOCTL_NUM_PARTITIONS;
 
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_CFG0, &fi->cfg0);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_CFG1, &fi->cfg1);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_IMG0, &fi->img0);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_IMG1, &fi->img1);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_NVLOG, &fi->nvlog);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_VENDOR0, &fi->vendor[0]);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_VENDOR1, &fi->vendor[1]);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_VENDOR2, &fi->vendor[2]);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_VENDOR3, &fi->vendor[3]);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_VENDOR4, &fi->vendor[4]);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_VENDOR5, &fi->vendor[5]);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_VENDOR6, &fi->vendor[6]);
-	set_fw_info_part(&info, SWITCHTEC_IOCTL_PART_VENDOR7, &fi->vendor[7]);
+	if (copy_to_user(uinfo, &info, sizeof(info)))
+		return -EFAULT;
 
-	active_addr = ioread32(&fi->active_img);
-	if (info.partition[SWITCHTEC_IOCTL_PART_IMG0].address == active_addr)
-		info.partition[SWITCHTEC_IOCTL_PART_IMG0].active = 1;
-	if (info.partition[SWITCHTEC_IOCTL_PART_IMG1].address == active_addr)
-		info.partition[SWITCHTEC_IOCTL_PART_IMG1].active = 1;
+	return 0;
+}
 
-	active_addr = ioread32(&fi->active_cfg);
-	if (info.partition[SWITCHTEC_IOCTL_PART_CFG0].address == active_addr)
-		info.partition[SWITCHTEC_IOCTL_PART_CFG0].active = 1;
-	if (info.partition[SWITCHTEC_IOCTL_PART_CFG1].address == active_addr)
-		info.partition[SWITCHTEC_IOCTL_PART_CFG1].active = 1;
+static void set_fw_info_part(struct switchtec_ioctl_flash_part_info *info,
+			     struct partition_info __iomem *pi)
+{
+	info->address = ioread32(&pi->address);
+	info->length = ioread32(&pi->length);
+}
+
+static int ioctl_flash_part_info(struct switchtec_dev *stdev,
+	struct switchtec_ioctl_flash_part_info __user *uinfo)
+{
+	struct switchtec_ioctl_flash_part_info info = {0};
+	struct flash_info_regs __iomem *fi = stdev->mmio_flash_info;
+	u32 active_addr = -1;
+
+	if (copy_from_user(&info, uinfo, sizeof(info)))
+		return -EFAULT;
+
+	switch (info.flash_partition) {
+	case SWITCHTEC_IOCTL_PART_CFG0:
+		active_addr = ioread32(&fi->active_cfg);
+		set_fw_info_part(&info, &fi->cfg0);
+		break;
+	case SWITCHTEC_IOCTL_PART_CFG1:
+		active_addr = ioread32(&fi->active_cfg);
+		set_fw_info_part(&info, &fi->cfg1);
+		break;
+	case SWITCHTEC_IOCTL_PART_IMG0:
+		active_addr = ioread32(&fi->active_img);
+		set_fw_info_part(&info, &fi->img0);
+		break;
+	case SWITCHTEC_IOCTL_PART_IMG1:
+		active_addr = ioread32(&fi->active_img);
+		set_fw_info_part(&info, &fi->img1);
+		break;
+	case SWITCHTEC_IOCTL_PART_NVLOG:
+		set_fw_info_part(&info, &fi->nvlog);
+		break;
+	case SWITCHTEC_IOCTL_PART_VENDOR0:
+		set_fw_info_part(&info, &fi->vendor[0]);
+		break;
+	case SWITCHTEC_IOCTL_PART_VENDOR1:
+		set_fw_info_part(&info, &fi->vendor[1]);
+		break;
+	case SWITCHTEC_IOCTL_PART_VENDOR2:
+		set_fw_info_part(&info, &fi->vendor[2]);
+		break;
+	case SWITCHTEC_IOCTL_PART_VENDOR3:
+		set_fw_info_part(&info, &fi->vendor[3]);
+		break;
+	case SWITCHTEC_IOCTL_PART_VENDOR4:
+		set_fw_info_part(&info, &fi->vendor[4]);
+		break;
+	case SWITCHTEC_IOCTL_PART_VENDOR5:
+		set_fw_info_part(&info, &fi->vendor[5]);
+		break;
+	case SWITCHTEC_IOCTL_PART_VENDOR6:
+		set_fw_info_part(&info, &fi->vendor[6]);
+		break;
+	case SWITCHTEC_IOCTL_PART_VENDOR7:
+		set_fw_info_part(&info, &fi->vendor[7]);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (info.address == active_addr)
+		info.active = 1;
 
 	if (copy_to_user(uinfo, &info, sizeof(info)))
 		return -EFAULT;
@@ -1111,8 +1151,10 @@ static long switchtec_dev_ioctl(struct file *filp, unsigned int cmd,
 	void __user *argp = (void __user *)arg;
 
 	switch (cmd) {
-	case SWITCHTEC_IOCTL_FW_INFO:
-		return ioctl_fw_info(stdev, argp);
+	case SWITCHTEC_IOCTL_FLASH_INFO:
+		return ioctl_flash_info(stdev, argp);
+	case SWITCHTEC_IOCTL_FLASH_PART_INFO:
+		return ioctl_flash_part_info(stdev, argp);
 	case SWITCHTEC_IOCTL_EVENT_SUMMARY:
 		return ioctl_event_summary(stdev, stuser, argp);
 	case SWITCHTEC_IOCTL_EVENT_CTL:
