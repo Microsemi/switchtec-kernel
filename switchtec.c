@@ -1031,7 +1031,6 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 		return IRQ_HANDLED;
 	}
 
-
 	return ret;
 }
 
