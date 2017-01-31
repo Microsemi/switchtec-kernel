@@ -1,4 +1,4 @@
-
+========================
 Linux Switchtec Support
 ========================
 
@@ -7,11 +7,11 @@ supported by the kernel with standard PCI switch drivers. However, the
 Switchtec device advertises a special management endpoint which
 enables some additional functionality. This includes:
 
- * Packet and Byte Counters
- * Firmware Upgrades
- * Event and Error logs
- * Querying port link status
- * Custom user firmware commands
+* Packet and Byte Counters
+* Firmware Upgrades
+* Event and Error logs
+* Querying port link status
+* Custom user firmware commands
 
 The switchtec kernel module implements this functionality.
 
@@ -35,46 +35,45 @@ device: /dev/switchtec#, one for each management endpoint in the system.
 
 The char device has the following semantics:
 
- * A write must consist of at least 4 bytes and no more than 1028 bytes.
-   The first four bytes will be interpreted as the command to run and
-   the remainder will be used as the input data. A write will send the
-   command to the firmware to begin processing.
+* A write must consist of at least 4 bytes and no more than 1028 bytes.
+  The first four bytes will be interpreted as the command to run and
+  the remainder will be used as the input data. A write will send the
+  command to the firmware to begin processing.
 
- * Each write must be followed by exactly one read. Any double write will
-   produce an error and any read that doesn't follow a write will
-   produce an error.
+* Each write must be followed by exactly one read. Any double write will
+  produce an error and any read that doesn't follow a write will
+  produce an error.
 
- * A read will block until the firmware completes the command and return
-   the four bytes of status plus up to 1024 bytes of output data. (The
-   length will be specified by the size parameter of the read call --
-   reading less than 4 bytes will produce an error.
+* A read will block until the firmware completes the command and return
+  the four bytes of status plus up to 1024 bytes of output data. (The
+  length will be specified by the size parameter of the read call --
+  reading less than 4 bytes will produce an error.
 
- * The poll call will also be supported for userspace applications that
-   need to do other things while waiting for the command to complete.
+* The poll call will also be supported for userspace applications that
+  need to do other things while waiting for the command to complete.
 
 The following IOCTLs are also supported by the device:
 
- * SWITCHTEC_IOCTL_FW_INFO - Retrieve firmware address and length for
-   any specified partition. This ioctl populates a
-   switchtec_ioctl_fw_info struct with addresses and lengs for each
-   partition.
+* SWITCHTEC_IOCTL_FW_INFO - Retrieve firmware address and length for
+  any specified partition. This ioctl populates a
+  switchtec_ioctl_fw_info struct with addresses and lengs for each
+  partition.
 
- * SWITCHTEC_IOCTL_EVENT_SUMMARY - Read a structure of bitmaps
-   indicating all uncleared events.
+* SWITCHTEC_IOCTL_EVENT_SUMMARY - Read a structure of bitmaps
+  indicating all uncleared events.
 
- * SWITCHTEC_IOCTL_EVENT_CTL - Get the current count, clear and set flags
-   for any event. This ioctl takes in a switchtec_ioctl_event_ctl struct
-   with the event_id, index and flags set (index being the partition or PFF
-   number for non-global events). It returns whether the event has
-   occurred, the number of times and any event specific data. The flags
-   can be used to clear the count or enable and disable actions to
-   happen when the event occurs.
+* SWITCHTEC_IOCTL_EVENT_CTL - Get the current count, clear and set flags
+  for any event. This ioctl takes in a switchtec_ioctl_event_ctl struct
+  with the event_id, index and flags set (index being the partition or PFF
+  number for non-global events). It returns whether the event has
+  occurred, the number of times and any event specific data. The flags
+  can be used to clear the count or enable and disable actions to
+  happen when the event occurs.
+  By using the SWITCHTEC_IOCTL_EVENT_FLAG_EN_POLL flag,
+  you can set an event to trigger a poll command to return with
+  POLLPRI. In this way, userspace can wait for events to occur.
 
-   By using the SWITCHTEC_IOCTL_EVENT_FLAG_EN_POLL flag,
-   you can set an event to trigger a poll command to return with
-   POLLPRI. In this way, userspace can wait for events to occur.
-
- * SWITCHTEC_IOCTL_PFF_TO_PORT and SWITCHTEC_IOCTL_PORT_TO_PFF convert
-   between PCI Function Framework number (used by the event system)
-   and Switchtec Logic Port ID and Partition number (which is more
-   user friendly).
+* SWITCHTEC_IOCTL_PFF_TO_PORT and SWITCHTEC_IOCTL_PORT_TO_PFF convert
+  between PCI Function Framework number (used by the event system)
+  and Switchtec Logic Port ID and Partition number (which is more
+  user friendly).
