@@ -15,7 +15,7 @@ What:		/sys/class/switchtec/switchtec[0-9]+/component_id
 Date:		05-Jan-2017
 KernelVersion:	v4.11
 Contact:	Logan Gunthorpe <logang@deltatee.com>
-Description:	Component identifier as stored in the hardware (eg. PM4385)
+Description:	Component identifier as stored in the hardware (eg. PM8543)
 		(read only)
 Values: 	arbitrary string.
 
