@@ -4,3 +4,6 @@ Module.symvers
 *.ko
 *.mod.c
 modules.order
+pahole??
+pahole*.txt
+copyto
