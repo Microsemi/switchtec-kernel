@@ -54,10 +54,11 @@ The char device has the following semantics:
 
 The following IOCTLs are also supported by the device:
 
-* SWITCHTEC_IOCTL_FW_INFO - Retrieve firmware address and length for
-  any specified partition. This ioctl populates a
-  switchtec_ioctl_fw_info struct with addresses and lengs for each
-  partition.
+* SWITCHTEC_IOCTL_FLASH_INFO - Retrieve firmware length and number
+  of partitions in the device.
+
+* SWITCHTEC_IOCTL_FLASH_PART_INFO - Retrieve address and lengeth for
+  any specified partition in flash.
 
 * SWITCHTEC_IOCTL_EVENT_SUMMARY - Read a structure of bitmaps
   indicating all uncleared events.
