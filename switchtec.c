@@ -1222,23 +1222,24 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 		return ERR_PTR(minor);
 
 	dev = &stdev->dev;
+	device_initialize(dev);
 	dev->devt = MKDEV(MAJOR(switchtec_devt), minor);
-
-	cdev = &stdev->cdev;
-	cdev_init(cdev, &switchtec_fops);
-	cdev->owner = THIS_MODULE;
-
-	rc = cdev_add(&stdev->cdev, dev->devt, 1);
-	if (rc)
-		goto err_cdev;
-
 	dev->class = switchtec_class;
 	dev->parent = &pdev->dev;
 	dev->groups = switchtec_device_groups;
 	dev->release = stdev_release;
 	dev_set_name(dev, "switchtec%d", minor);
 
-	rc = device_register(dev);
+	cdev = &stdev->cdev;
+	cdev_init(cdev, &switchtec_fops);
+	cdev->owner = THIS_MODULE;
+	cdev->kobj.parent = &dev->kobj;
+
+	rc = cdev_add(&stdev->cdev, dev->devt, 1);
+	if (rc)
+		goto err_cdev;
+
+	rc = device_add(dev);
 	if (rc) {
 		cdev_del(&stdev->cdev);
 		put_device(dev);
