@@ -1183,14 +1183,14 @@ static void stdev_release(struct device *dev)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
 
-	ida_simple_remove(&switchtec_minor_ida,
-			  MINOR(dev->devt));
 	kfree(stdev);
 }
 
 static void stdev_unregister(struct switchtec_dev *stdev)
 {
 	cdev_del(&stdev->cdev);
+	ida_simple_remove(&switchtec_minor_ida,
+			  MINOR(stdev->dev.devt));
 	device_unregister(&stdev->dev);
 }
 
@@ -1216,18 +1216,21 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 	init_waitqueue_head(&stdev->event_wq);
 	atomic_set(&stdev->event_cnt, 0);
 
-	minor = ida_simple_get(&switchtec_minor_ida, 0, 0,
-			       GFP_KERNEL);
-	if (minor < 0)
-		return ERR_PTR(minor);
-
 	dev = &stdev->dev;
 	device_initialize(dev);
-	dev->devt = MKDEV(MAJOR(switchtec_devt), minor);
 	dev->class = switchtec_class;
 	dev->parent = &pdev->dev;
 	dev->groups = switchtec_device_groups;
 	dev->release = stdev_release;
+
+	minor = ida_simple_get(&switchtec_minor_ida, 0, 0,
+			       GFP_KERNEL);
+	if (minor < 0) {
+		rc = minor;
+		goto err_put;
+	}
+
+	dev->devt = MKDEV(MAJOR(switchtec_devt), minor);
 	dev_set_name(dev, "switchtec%d", minor);
 
 	cdev = &stdev->cdev;
@@ -1240,17 +1243,17 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 		goto err_cdev;
 
 	rc = device_add(dev);
-	if (rc) {
-		cdev_del(&stdev->cdev);
-		put_device(dev);
-		return ERR_PTR(rc);
-	}
+	if (rc)
+		goto err_devadd;
 
 	return stdev;
 
+err_devadd:
+	cdev_del(&stdev->cdev);
 err_cdev:
 	ida_simple_remove(&switchtec_minor_ida, minor);
-
+err_put:
+	put_device(&stdev->dev);
 	return ERR_PTR(rc);
 }
 
@@ -1489,7 +1492,7 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 	int rc;
 
 	stdev = stdev_create(pdev);
-	if (!stdev)
+	if (IS_ERR(stdev))
 		return PTR_ERR(stdev);
 
 	rc = switchtec_init_pci(stdev, pdev);
