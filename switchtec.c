@@ -628,7 +628,7 @@ static ssize_t switchtec_dev_write(struct file *filp, const char __user *data,
 	int rc;
 
 	if (size < sizeof(stuser->cmd) ||
-	    size > sizeof(stuser->cmd) + SWITCHTEC_MRPC_PAYLOAD_SIZE)
+	    size > sizeof(stuser->cmd) + sizeof(stuser->data))
 		return -EINVAL;
 
 	if (mutex_lock_interruptible(&stdev->mrpc_mutex))
@@ -672,7 +672,7 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 	int rc;
 
 	if (size < sizeof(stuser->cmd) ||
-	    size > sizeof(stuser->cmd) + SWITCHTEC_MRPC_PAYLOAD_SIZE)
+	    size > sizeof(stuser->cmd) + sizeof(stuser->data))
 		return -EINVAL;
 
 	if (stuser->state == MRPC_IDLE)
