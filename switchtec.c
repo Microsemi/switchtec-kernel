@@ -1298,9 +1298,7 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
 {
 	struct pci_dev *pdev = stdev->pdev;
-	int rc, i, msix_count, node;
-
-	node = dev_to_node(&pdev->dev);
+	int rc, i, msix_count;
 
 	for (i = 0; i < ARRAY_SIZE(stdev->msix); ++i)
 		stdev->msix[i].entry = i;
