@@ -360,11 +360,6 @@ static void stuser_set_state(struct switchtec_user *stuser,
 		stuser, state_names[state]);
 }
 
-static int stdev_is_alive(struct switchtec_dev *stdev)
-{
-	return stdev->mmio != NULL;
-}
-
 static void mrpc_complete_cmd(struct switchtec_dev *stdev);
 
 static void mrpc_cmd_submit(struct switchtec_dev *stdev)
@@ -472,13 +467,11 @@ static void mrpc_timeout_work(struct work_struct *work)
 
 	mutex_lock(&stdev->mrpc_mutex);
 
-	if (stdev_is_alive(stdev)) {
-		status = ioread32(&stdev->mmio_mrpc->status);
-		if (status == SWITCHTEC_MRPC_STATUS_INPROGRESS) {
-			schedule_delayed_work(&stdev->mrpc_timeout,
-					      msecs_to_jiffies(500));
-			goto out;
-		}
+	status = ioread32(&stdev->mmio_mrpc->status);
+	if (status == SWITCHTEC_MRPC_STATUS_INPROGRESS) {
+		schedule_delayed_work(&stdev->mrpc_timeout,
+				      msecs_to_jiffies(500));
+		goto out;
 	}
 
 	mrpc_complete_cmd(stdev);
@@ -634,9 +627,6 @@ static ssize_t switchtec_dev_write(struct file *filp, const char __user *data,
 	struct switchtec_dev *stdev = stuser->stdev;
 	int rc;
 
-	if (!stdev_is_alive(stdev))
-		return -ENXIO;
-
 	if (size < sizeof(stuser->cmd) ||
 	    size > sizeof(stuser->cmd) + SWITCHTEC_MRPC_PAYLOAD_SIZE)
 		return -EINVAL;
@@ -680,9 +670,6 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 	struct switchtec_user *stuser = filp->private_data;
 	struct switchtec_dev *stdev = stuser->stdev;
 	int rc;
-
-	if (!stdev_is_alive(stdev))
-		return -ENXIO;
 
 	if (size < sizeof(stuser->cmd) ||
 	    size > sizeof(stuser->cmd) + SWITCHTEC_MRPC_PAYLOAD_SIZE)
@@ -744,9 +731,6 @@ static unsigned int switchtec_dev_poll(struct file *filp, poll_table *wait)
 
 	poll_wait(filp, &stuser->comp.wait, wait);
 	poll_wait(filp, &stdev->event_wq, wait);
-
-	if (!stdev_is_alive(stdev))
-		return POLLERR;
 
 	if (try_wait_for_completion(&stuser->comp))
 		ret |= POLLIN | POLLRDNORM;
@@ -1183,6 +1167,11 @@ static void stdev_release(struct device *dev)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
 
+	pci_disable_msix(stdev->pdev);
+	pci_disable_msi(stdev->pdev);
+	pci_clear_master(stdev->pdev);
+	pci_set_drvdata(stdev->pdev, NULL);
+
 	kfree(stdev);
 }
 
@@ -1396,17 +1385,10 @@ static int switchtec_init_isr(struct switchtec_dev *stdev)
 	if (rc)
 		return rc;
 
-	rc = devm_request_irq(&stdev->pdev->dev, stdev->event_irq,
+	rc = devm_request_irq(&stdev->dev, stdev->event_irq,
 			      switchtec_event_isr, 0, KBUILD_MODNAME, stdev);
 
 	return rc;
-}
-
-static void switchtec_deinit_isr(struct switchtec_dev *stdev)
-{
-	devm_free_irq(&stdev->pdev->dev, stdev->event_irq, stdev);
-	pci_disable_msix(stdev->pdev);
-	pci_disable_msi(stdev->pdev);
 }
 
 static void init_pff(struct switchtec_dev *stdev)
@@ -1476,15 +1458,6 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	return 0;
 }
 
-static void switchtec_deinit_pci(struct switchtec_dev *stdev)
-{
-	struct pci_dev *pdev = stdev->pdev;
-
-	stdev->mmio = NULL;
-	pci_clear_master(pdev);
-	pci_set_drvdata(pdev, NULL);
-}
-
 static int switchtec_pci_probe(struct pci_dev *pdev,
 			       const struct pci_device_id *id)
 {
@@ -1502,15 +1475,13 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 	rc = switchtec_init_isr(stdev);
 	if (rc) {
 		dev_err(&stdev->dev, "failed to init isr.\n");
-		goto err_init_isr;
+		goto err_init_pci;
 	}
 
 	dev_info(&stdev->dev, "Management device registered.\n");
 
 	return 0;
 
-err_init_isr:
-	switchtec_deinit_pci(stdev);
 err_init_pci:
 	stdev_unregister(stdev);
 	return rc;
@@ -1520,8 +1491,6 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 {
 	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
 
-	switchtec_deinit_isr(stdev);
-	switchtec_deinit_pci(stdev);
 	stdev_unregister(stdev);
 }
 
