@@ -1373,10 +1373,6 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 
 	init_pff(stdev);
 
-	iowrite32(SWITCHTEC_EVENT_CLEAR |
-		  SWITCHTEC_EVENT_EN_IRQ,
-		  &stdev->mmio_part_cfg->mrpc_comp_hdr);
-
 	pci_set_drvdata(pdev, stdev);
 
 	return 0;
@@ -1401,6 +1397,10 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 		dev_err(&stdev->dev, "failed to init isr.\n");
 		goto err_init_pci;
 	}
+
+	iowrite32(SWITCHTEC_EVENT_CLEAR |
+		  SWITCHTEC_EVENT_EN_IRQ,
+		  &stdev->mmio_part_cfg->mrpc_comp_hdr);
 
 	dev_info(&stdev->dev, "Management device registered.\n");
 
