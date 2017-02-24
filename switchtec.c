@@ -1569,7 +1569,6 @@ static int __init switchtec_init(void)
 {
 	int rc;
 
-	max_devices = max(max_devices, 256);
 	rc = alloc_chrdev_region(&switchtec_devt, 0, max_devices,
 				 "switchtec");
 	if (rc)
