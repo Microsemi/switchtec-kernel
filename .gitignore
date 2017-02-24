@@ -7,3 +7,6 @@ modules.order
 pahole??
 pahole*.txt
 copyto
+*.o
+__pycache__
+.project.sl
