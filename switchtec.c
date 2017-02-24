@@ -285,15 +285,17 @@ static struct switchtec_dev *to_stdev(struct device *dev)
 	return container_of(dev, struct switchtec_dev, dev);
 }
 
+enum mrpc_state {
+	MRPC_IDLE = 0,
+	MRPC_QUEUED,
+	MRPC_RUNNING,
+	MRPC_DONE,
+};
+
 struct switchtec_user {
 	struct switchtec_dev *stdev;
 
-	enum mrpc_state {
-		MRPC_IDLE = 0,
-		MRPC_QUEUED,
-		MRPC_RUNNING,
-		MRPC_DONE,
-	} state;
+	atomic_t state; /* enum mrpc_state */
 
 	struct completion comp;
 	struct kref kref;
@@ -354,7 +356,7 @@ static void stuser_set_state(struct switchtec_user *stuser,
 		[MRPC_DONE] = "DONE",
 	};
 
-	stuser->state = state;
+	atomic_set(&stuser->state, state);
 
 	dev_dbg(&stuser->stdev->dev, "stuser state %p -> %s",
 		stuser, state_names[state]);
@@ -631,51 +633,41 @@ static ssize_t switchtec_dev_write(struct file *filp, const char __user *data,
 	    size > sizeof(stuser->cmd) + sizeof(stuser->data))
 		return -EINVAL;
 
-	if (mutex_lock_interruptible(&stdev->mrpc_mutex))
-		return -EINTR;
-
-	if (stuser->state != MRPC_IDLE) {
-		rc = -EBADE;
-		goto out;
-	}
+	if (atomic_read(&stuser->state) != MRPC_IDLE)
+		return -EBADE;
 
 	rc = copy_from_user(&stuser->cmd, data, sizeof(stuser->cmd));
-	if (rc) {
-		rc = -EFAULT;
-		goto out;
-	}
+	if (rc)
+		return -EFAULT;
 
 	data += sizeof(stuser->cmd);
 	rc = copy_from_user(&stuser->data, data, size - sizeof(stuser->cmd));
-	if (rc) {
-		rc = -EFAULT;
-		goto out;
-	}
+	if (rc)
+		return -EFAULT;
 
 	stuser->data_len = size - sizeof(stuser->cmd);
 
+	if (mutex_lock_interruptible(&stdev->mrpc_mutex))
+		return -EINTR;
+
 	mrpc_queue_cmd(stuser);
 
-	rc = size;
-
-out:
 	mutex_unlock(&stdev->mrpc_mutex);
 
-	return rc;
+	return size;
 }
 
 static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 				  size_t size, loff_t *off)
 {
 	struct switchtec_user *stuser = filp->private_data;
-	struct switchtec_dev *stdev = stuser->stdev;
 	int rc;
 
 	if (size < sizeof(stuser->cmd) ||
 	    size > sizeof(stuser->cmd) + sizeof(stuser->data))
 		return -EINVAL;
 
-	if (stuser->state == MRPC_IDLE)
+	if (atomic_read(&stuser->state) == MRPC_IDLE)
 		return -EBADE;
 
 	if (filp->f_flags & O_NONBLOCK) {
@@ -687,40 +679,28 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 			return rc;
 	}
 
-	if (mutex_lock_interruptible(&stdev->mrpc_mutex))
-		return -EINTR;
-
-	if (stuser->state != MRPC_DONE)
+	if (atomic_read(&stuser->state) != MRPC_DONE)
 		return -EBADE;
 
 	rc = copy_to_user(data, &stuser->return_code,
 			  sizeof(stuser->return_code));
-	if (rc) {
-		rc = -EFAULT;
-		goto out;
-	}
+	if (rc)
+		return -EFAULT;
 
 	data += sizeof(stuser->return_code);
 	rc = copy_to_user(data, &stuser->data,
 			  size - sizeof(stuser->return_code));
-	if (rc) {
-		rc = -EFAULT;
-		goto out;
-	}
+	if (rc)
+		return -EFAULT;
 
 	stuser_set_state(stuser, MRPC_IDLE);
 
 	if (stuser->status == SWITCHTEC_MRPC_STATUS_DONE)
-		rc = size;
+		return size;
 	else if (stuser->status == SWITCHTEC_MRPC_STATUS_INTERRUPTED)
-		rc = -ENXIO;
+		return -ENXIO;
 	else
-		rc = -EBADMSG;
-
-out:
-	mutex_unlock(&stdev->mrpc_mutex);
-
-	return rc;
+		return -EBADMSG;
 }
 
 static unsigned int switchtec_dev_poll(struct file *filp, poll_table *wait)
