@@ -267,7 +267,7 @@ struct switchtec_dev {
 
 	/*
 	 * The mrpc mutex must be held when accessing the other
-	 * mrpc fields or the alive field
+	 * mrpc_ fields, alive flag and stuser->state field
 	 */
 	struct mutex mrpc_mutex;
 	struct list_head mrpc_queue;
@@ -290,13 +290,12 @@ enum mrpc_state {
 	MRPC_QUEUED,
 	MRPC_RUNNING,
 	MRPC_DONE,
-	MRPC_KILLED,
 };
 
 struct switchtec_user {
 	struct switchtec_dev *stdev;
 
-	atomic_t state; /* enum mrpc_state */
+	enum mrpc_state state;
 
 	struct completion comp;
 	struct kref kref;
@@ -350,6 +349,8 @@ static void stuser_put(struct switchtec_user *stuser)
 static void stuser_set_state(struct switchtec_user *stuser,
 			     enum mrpc_state state)
 {
+	/* requires the mrpc_mutex to already be held when called */
+
 	const char * const state_names[] = {
 		[MRPC_IDLE] = "IDLE",
 		[MRPC_QUEUED] = "QUEUED",
@@ -357,7 +358,7 @@ static void stuser_set_state(struct switchtec_user *stuser,
 		[MRPC_DONE] = "DONE",
 	};
 
-	atomic_set(&stuser->state, state);
+	stuser->state = state;
 
 	dev_dbg(&stuser->stdev->dev, "stuser state %p -> %s",
 		stuser, state_names[state]);
@@ -400,9 +401,6 @@ static int mrpc_queue_cmd(struct switchtec_user *stuser)
 
 	struct switchtec_dev *stdev = stuser->stdev;
 
-	if (!stdev->alive)
-		return -ENODEV;
-
 	kref_get(&stuser->kref);
 	stuser_set_state(stuser, MRPC_QUEUED);
 	init_completion(&stuser->comp);
@@ -423,11 +421,6 @@ static void mrpc_complete_cmd(struct switchtec_dev *stdev)
 
 	stuser = list_entry(stdev->mrpc_queue.next, struct switchtec_user,
 			    list);
-
-	if (!stdev->alive) {
-		stuser_set_state(stuser, MRPC_KILLED);
-		goto out;
-	}
 
 	stuser->status = ioread32(&stdev->mmio_mrpc->status);
 	if (stuser->status == SWITCHTEC_MRPC_STATUS_INPROGRESS)
@@ -480,9 +473,6 @@ static void mrpc_timeout_work(struct work_struct *work)
 
 	mutex_lock(&stdev->mrpc_mutex);
 
-	if (!stdev->alive)
-		goto complete;
-
 	status = ioread32(&stdev->mmio_mrpc->status);
 	if (status == SWITCHTEC_MRPC_STATUS_INPROGRESS) {
 		schedule_delayed_work(&stdev->mrpc_timeout,
@@ -490,7 +480,6 @@ static void mrpc_timeout_work(struct work_struct *work)
 		goto out;
 	}
 
-complete:
 	mrpc_complete_cmd(stdev);
 
 out:
@@ -637,6 +626,19 @@ static int switchtec_dev_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
+static int lock_mutex_and_test_alive(struct switchtec_dev *stdev)
+{
+	if (mutex_lock_interruptible(&stdev->mrpc_mutex))
+		return -EINTR;
+
+	if (!stdev->alive) {
+		mutex_unlock(&stdev->mrpc_mutex);
+		return -ENODEV;
+	}
+
+	return 0;
+}
+
 static ssize_t switchtec_dev_write(struct file *filp, const char __user *data,
 				   size_t size, loff_t *off)
 {
@@ -648,25 +650,33 @@ static ssize_t switchtec_dev_write(struct file *filp, const char __user *data,
 	    size > sizeof(stuser->cmd) + sizeof(stuser->data))
 		return -EINVAL;
 
-	if (atomic_read(&stuser->state) != MRPC_IDLE)
-		return -EBADE;
+	stuser->data_len = size - sizeof(stuser->cmd);
+
+	rc = lock_mutex_and_test_alive(stdev);
+	if (rc)
+		return -rc;
+
+	if (stuser->state != MRPC_IDLE) {
+		rc = -EBADE;
+		goto out;
+	}
 
 	rc = copy_from_user(&stuser->cmd, data, sizeof(stuser->cmd));
-	if (rc)
-		return -EFAULT;
+	if (rc) {
+		rc = -EFAULT;
+		goto out;
+	}
 
 	data += sizeof(stuser->cmd);
 	rc = copy_from_user(&stuser->data, data, size - sizeof(stuser->cmd));
-	if (rc)
-		return -EFAULT;
-
-	stuser->data_len = size - sizeof(stuser->cmd);
-
-	if (mutex_lock_interruptible(&stdev->mrpc_mutex))
-		return -EINTR;
+	if (rc) {
+		rc = -EFAULT;
+		goto out;
+	}
 
 	rc = mrpc_queue_cmd(stuser);
 
+out:
 	mutex_unlock(&stdev->mrpc_mutex);
 
 	if (rc)
@@ -679,14 +689,23 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 				  size_t size, loff_t *off)
 {
 	struct switchtec_user *stuser = filp->private_data;
+	struct switchtec_dev *stdev = stuser->stdev;
 	int rc;
 
 	if (size < sizeof(stuser->cmd) ||
 	    size > sizeof(stuser->cmd) + sizeof(stuser->data))
 		return -EINVAL;
 
-	if (atomic_read(&stuser->state) == MRPC_IDLE)
+	rc = lock_mutex_and_test_alive(stdev);
+	if (rc)
+		return -rc;
+
+	if (stuser->state == MRPC_IDLE) {
+		mutex_unlock(&stdev->mrpc_mutex);
 		return -EBADE;
+	}
+
+	mutex_unlock(&stdev->mrpc_mutex);
 
 	if (filp->f_flags & O_NONBLOCK) {
 		if (!try_wait_for_completion(&stuser->comp))
@@ -697,24 +716,34 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 			return rc;
 	}
 
-	if (atomic_read(&stuser->state) == MRPC_KILLED)
-		return -ENODEV;
+	rc = lock_mutex_and_test_alive(stdev);
+	if (rc)
+		return -rc;
 
-	if (atomic_read(&stuser->state) != MRPC_DONE)
+	if (stuser->state != MRPC_DONE) {
+		mutex_unlock(&stdev->mrpc_mutex);
 		return -EBADE;
+	}
 
 	rc = copy_to_user(data, &stuser->return_code,
 			  sizeof(stuser->return_code));
-	if (rc)
-		return -EFAULT;
+	if (rc) {
+		rc = -EFAULT;
+		goto out;
+	}
 
 	data += sizeof(stuser->return_code);
 	rc = copy_to_user(data, &stuser->data,
 			  size - sizeof(stuser->return_code));
-	if (rc)
-		return -EFAULT;
+	if (rc) {
+		rc = -EFAULT;
+		goto out;
+	}
 
 	stuser_set_state(stuser, MRPC_IDLE);
+
+out:
+	mutex_unlock(&stdev->mrpc_mutex);
 
 	if (stuser->status == SWITCHTEC_MRPC_STATUS_DONE)
 		return size;
@@ -732,6 +761,11 @@ static unsigned int switchtec_dev_poll(struct file *filp, poll_table *wait)
 
 	poll_wait(filp, &stuser->comp.wait, wait);
 	poll_wait(filp, &stdev->event_wq, wait);
+
+	if (lock_mutex_and_test_alive(stdev))
+		return POLLIN | POLLRDHUP | POLLOUT | POLLERR | POLLHUP;
+
+	mutex_unlock(&stdev->mrpc_mutex);
 
 	if (try_wait_for_completion(&stuser->comp))
 		ret |= POLLIN | POLLRDNORM;
@@ -1132,25 +1166,39 @@ static long switchtec_dev_ioctl(struct file *filp, unsigned int cmd,
 {
 	struct switchtec_user *stuser = filp->private_data;
 	struct switchtec_dev *stdev = stuser->stdev;
-
+	int rc;
 	void __user *argp = (void __user *)arg;
+
+	rc = lock_mutex_and_test_alive(stdev);
+	if (rc)
+		return rc;
 
 	switch (cmd) {
 	case SWITCHTEC_IOCTL_FLASH_INFO:
-		return ioctl_flash_info(stdev, argp);
+		rc = ioctl_flash_info(stdev, argp);
+		break;
 	case SWITCHTEC_IOCTL_FLASH_PART_INFO:
-		return ioctl_flash_part_info(stdev, argp);
+		rc = ioctl_flash_part_info(stdev, argp);
+		break;
 	case SWITCHTEC_IOCTL_EVENT_SUMMARY:
-		return ioctl_event_summary(stdev, stuser, argp);
+		rc = ioctl_event_summary(stdev, stuser, argp);
+		break;
 	case SWITCHTEC_IOCTL_EVENT_CTL:
-		return ioctl_event_ctl(stdev, argp);
+		rc = ioctl_event_ctl(stdev, argp);
+		break;
 	case SWITCHTEC_IOCTL_PFF_TO_PORT:
-		return ioctl_pff_to_port(stdev, argp);
+		rc = ioctl_pff_to_port(stdev, argp);
+		break;
 	case SWITCHTEC_IOCTL_PORT_TO_PFF:
-		return ioctl_port_to_pff(stdev, argp);
+		rc = ioctl_port_to_pff(stdev, argp);
+		break;
 	default:
-		return -ENOTTY;
+		rc = -ENOTTY;
+		break;
 	}
+
+	mutex_unlock(&stdev->mrpc_mutex);
+	return rc;
 }
 
 static const struct file_operations switchtec_fops = {
@@ -1168,24 +1216,32 @@ static void stdev_release(struct device *dev)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
 
-	cancel_delayed_work_sync(&stdev->mrpc_timeout);
-
 	kfree(stdev);
 }
 
-static void stdev_unregister(struct switchtec_dev *stdev)
+static void stdev_kill(struct switchtec_dev *stdev)
 {
-	mutex_lock(&stdev->mrpc_mutex);
-	stdev->alive = false;
-	mutex_unlock(&stdev->mrpc_mutex);
+	struct switchtec_user *stuser, *tmpuser;
 
 	pci_clear_master(stdev->pdev);
-	pci_set_drvdata(stdev->pdev, NULL);
 
-	cdev_del(&stdev->cdev);
-	ida_simple_remove(&switchtec_minor_ida,
-			  MINOR(stdev->dev.devt));
-	device_unregister(&stdev->dev);
+	cancel_delayed_work_sync(&stdev->mrpc_timeout);
+
+	/* Mark the hardware as unavailable and complete all completions */
+	mutex_lock(&stdev->mrpc_mutex);
+	stdev->alive = false;
+
+	/* Wake up and kill any users waiting on an MRPC request */
+	list_for_each_entry_safe(stuser, tmpuser, &stdev->mrpc_queue, list) {
+		complete_all(&stuser->comp);
+		list_del_init(&stuser->list);
+		stuser_put(stuser);
+	}
+
+	mutex_unlock(&stdev->mrpc_mutex);
+
+	/* Wake up any users waiting on event_wq */
+	wake_up_interruptible(&stdev->event_wq);
 }
 
 static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
@@ -1233,23 +1289,8 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 	cdev->owner = THIS_MODULE;
 	cdev->kobj.parent = &dev->kobj;
 
-	rc = cdev_add(&stdev->cdev, dev->devt, 1);
-	if (rc)
-		goto err_cdev;
-
-	rc = device_add(dev);
-	if (rc)
-		goto err_devadd;
-
 	return stdev;
 
-err_devadd:
-	mutex_lock(&stdev->mrpc_mutex);
-	stdev->alive = false;
-	mutex_unlock(&stdev->mrpc_mutex);
-	cdev_del(&stdev->cdev);
-err_cdev:
-	ida_simple_remove(&switchtec_minor_ida, minor);
 err_put:
 	put_device(&stdev->dev);
 	return ERR_PTR(rc);
@@ -1422,24 +1463,36 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 
 	rc = switchtec_init_pci(stdev, pdev);
 	if (rc)
-		goto err_init_pci;
+		goto err_put;
 
 	rc = switchtec_init_isr(stdev);
 	if (rc) {
 		dev_err(&stdev->dev, "failed to init isr.\n");
-		goto err_init_pci;
+		goto err_put;
 	}
 
 	iowrite32(SWITCHTEC_EVENT_CLEAR |
 		  SWITCHTEC_EVENT_EN_IRQ,
 		  &stdev->mmio_part_cfg->mrpc_comp_hdr);
 
+	rc = cdev_add(&stdev->cdev, stdev->dev.devt, 1);
+	if (rc)
+		goto err_put;
+
+	rc = device_add(&stdev->dev);
+	if (rc)
+		goto err_devadd;
+
 	dev_info(&stdev->dev, "Management device registered.\n");
 
 	return 0;
 
-err_init_pci:
-	stdev_unregister(stdev);
+err_devadd:
+	cdev_del(&stdev->cdev);
+	stdev_kill(stdev);
+err_put:
+	ida_simple_remove(&switchtec_minor_ida, MINOR(stdev->dev.devt));
+	put_device(&stdev->dev);
 	return rc;
 }
 
@@ -1447,7 +1500,14 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 {
 	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
 
-	stdev_unregister(stdev);
+	pci_set_drvdata(pdev, NULL);
+
+	cdev_del(&stdev->cdev);
+	ida_simple_remove(&switchtec_minor_ida, MINOR(stdev->dev.devt));
+	device_unregister(&stdev->dev);
+	dev_info(&stdev->dev, "unregistered.\n");
+
+	stdev_kill(stdev);
 }
 
 #define SWITCHTEC_PCI_DEVICE(device_id) \
