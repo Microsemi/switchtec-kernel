@@ -1506,12 +1506,13 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 
 	pci_set_drvdata(pdev, NULL);
 
+	device_del(&stdev->dev);
 	cdev_del(&stdev->cdev);
 	ida_simple_remove(&switchtec_minor_ida, MINOR(stdev->dev.devt));
-	device_unregister(&stdev->dev);
 	dev_info(&stdev->dev, "unregistered.\n");
 
 	stdev_kill(stdev);
+	put_device(&stdev->dev);
 }
 
 #define SWITCHTEC_PCI_DEVICE(device_id) \
