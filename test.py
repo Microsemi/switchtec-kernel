@@ -147,7 +147,7 @@ class SwitchtecTests(unittest.TestCase):
             self.st.start_cmd(65, b"\x11\x22")
 
             with self.assertRaises(OSError):
-                self.st.read_resp(1)
+                self.st.read_resp(2)
 
             while not self.st.poll():
                 pass

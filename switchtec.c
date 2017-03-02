@@ -305,6 +305,7 @@ struct switchtec_user {
 	u32 status;
 	u32 return_code;
 	size_t data_len;
+	size_t read_len;
 	unsigned char data[SWITCHTEC_MRPC_PAYLOAD_SIZE];
 	int event_cnt;
 };
@@ -402,6 +403,7 @@ static int mrpc_queue_cmd(struct switchtec_user *stuser)
 	struct switchtec_dev *stdev = stuser->stdev;
 
 	kref_get(&stuser->kref);
+	stuser->read_len = sizeof(stuser->data);
 	stuser_set_state(stuser, MRPC_QUEUED);
 	init_completion(&stuser->comp);
 	list_add_tail(&stuser->list, &stdev->mrpc_queue);
@@ -437,7 +439,7 @@ static void mrpc_complete_cmd(struct switchtec_dev *stdev)
 		goto out;
 
 	memcpy_fromio(stuser->data, &stdev->mmio_mrpc->output_data,
-		      sizeof(stuser->data));
+		      stuser->read_len);
 
 out:
 	complete_all(&stuser->comp);
@@ -704,6 +706,8 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 		mutex_unlock(&stdev->mrpc_mutex);
 		return -EBADE;
 	}
+
+	stuser->read_len = size - sizeof(stuser->return_code);
 
 	mutex_unlock(&stdev->mrpc_mutex);
 
