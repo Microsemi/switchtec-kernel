@@ -656,7 +656,7 @@ static ssize_t switchtec_dev_write(struct file *filp, const char __user *data,
 
 	rc = lock_mutex_and_test_alive(stdev);
 	if (rc)
-		return -rc;
+		return rc;
 
 	if (stuser->state != MRPC_IDLE) {
 		rc = -EBADE;
@@ -700,7 +700,7 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 
 	rc = lock_mutex_and_test_alive(stdev);
 	if (rc)
-		return -rc;
+		return rc;
 
 	if (stuser->state == MRPC_IDLE) {
 		mutex_unlock(&stdev->mrpc_mutex);
@@ -722,7 +722,7 @@ static ssize_t switchtec_dev_read(struct file *filp, char __user *data,
 
 	rc = lock_mutex_and_test_alive(stdev);
 	if (rc)
-		return -rc;
+		return rc;
 
 	if (stuser->state != MRPC_DONE) {
 		mutex_unlock(&stdev->mrpc_mutex);
