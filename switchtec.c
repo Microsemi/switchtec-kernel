@@ -608,7 +608,7 @@ static int switchtec_dev_open(struct inode *inode, struct file *filp)
 	stdev = container_of(inode->i_cdev, struct switchtec_dev, cdev);
 
 	stuser = stuser_create(stdev);
-	if (!stuser)
+	if (IS_ERR(stuser))
 		return PTR_ERR(stuser);
 
 	filp->private_data = stuser;
