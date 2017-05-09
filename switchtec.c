@@ -18,6 +18,8 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/fs.h>
+#include <linux/idr.h>
+#include <linux/sched.h>
 #include <linux/uaccess.h>
 #include <linux/poll.h>
 #include <linux/pci.h>
@@ -247,8 +249,10 @@ struct pff_csr_regs {
 
 struct switchtec_dev {
 	struct pci_dev *pdev;
+	struct msix_entry msix[4];
 	struct device dev;
 	struct cdev cdev;
+	unsigned int event_irq; 
 
 	int partition;
 	int partition_count;
@@ -1369,25 +1373,76 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 	return ret;
 }
 
+static int switchtec_init_msix_isr(struct switchtec_dev *stdev)
+{
+        struct pci_dev *pdev = stdev->pdev;
+        int rc, i, msix_count;
+
+        for (i = 0; i < ARRAY_SIZE(stdev->msix); ++i)
+                stdev->msix[i].entry = i;
+
+        msix_count = pci_enable_msix_range(pdev, stdev->msix, 1,
+                                           ARRAY_SIZE(stdev->msix));
+        if (msix_count < 0)
+                return msix_count;
+
+        stdev->event_irq = ioread32(&stdev->mmio_part_cfg->vep_vector_number);
+        if (stdev->event_irq < 0 || stdev->event_irq >= msix_count) {
+                rc = -EFAULT;
+                goto err_msix_request;
+        }
+
+        stdev->event_irq = stdev->msix[stdev->event_irq].vector;
+        dev_dbg(&stdev->dev, "Using msix interrupts: event_irq=%d\n",
+                stdev->event_irq);
+
+        return 0;
+
+err_msix_request:
+        pci_disable_msix(pdev);
+        return rc;
+}
+
+static int switchtec_init_msi_isr(struct switchtec_dev *stdev)
+{
+        int rc;
+        struct pci_dev *pdev = stdev->pdev;
+
+        /* Try to set up msi irq */
+        rc = pci_enable_msi_range(pdev, 1, 4);
+        if (rc < 0)
+                return rc;
+
+        stdev->event_irq = ioread32(&stdev->mmio_part_cfg->vep_vector_number);
+        if (stdev->event_irq < 0 || stdev->event_irq >= 4) {
+                rc = -EFAULT;
+                goto err_msi_request;
+        }
+
+        stdev->event_irq = pdev->irq + stdev->event_irq;
+        dev_dbg(&stdev->dev, "Using msi interrupts: event_irq=%d\n",
+                stdev->event_irq);
+
+        return 0;
+
+err_msi_request:
+        pci_disable_msi(pdev);
+        return rc;
+}
+
+
 static int switchtec_init_isr(struct switchtec_dev *stdev)
 {
-	int nvecs;
-	int event_irq;
+	int rc;
 
-	nvecs = pci_alloc_irq_vectors(stdev->pdev, 1, 4,
-				      PCI_IRQ_MSIX | PCI_IRQ_MSI);
-	if (nvecs < 0)
-		return nvecs;
+	rc = switchtec_init_msix_isr(stdev);
+	if (rc) 
+		rc = switchtec_init_msi_isr(stdev);
 
-	event_irq = ioread32(&stdev->mmio_part_cfg->vep_vector_number);
-	if (event_irq < 0 || event_irq >= nvecs)
-		return -EFAULT;
+	if (rc)
+		return rc;
 
-	event_irq = pci_irq_vector(stdev->pdev, event_irq);
-	if (event_irq < 0)
-		return event_irq;
-
-	return devm_request_irq(&stdev->pdev->dev, event_irq,
+	return devm_request_irq(&stdev->pdev->dev, stdev->event_irq,
 				switchtec_event_isr, 0,
 				KBUILD_MODNAME, stdev);
 }
