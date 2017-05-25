@@ -34,3 +34,4 @@ pahole: pahole64 pahole32
 
 clean::
 	rm -f pahole32 pahole64 pahole*.txt
+	$(MAKE) -C $(KERNEL_SOURCES) M=$$PWD $@
