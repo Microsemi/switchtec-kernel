@@ -17,6 +17,7 @@
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
+#include <linux/ntb.h>
 
 MODULE_DESCRIPTION("Microsemi Switchtec(tm) NTB Driver");
 MODULE_VERSION("0.1");
@@ -63,6 +64,7 @@ struct shared_mw {
 #define LUT_SIZE SZ_64K
 
 struct switchtec_ntb {
+	struct ntb_dev ntb;
 	struct switchtec_dev *stdev;
 
 	int self_partition;
@@ -145,9 +147,133 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 	return -EIO;
 }
 
+static int switchtec_ntb_mw_count(struct ntb_dev *ntb)
+{
+	return 0;
+}
+
+static int switchtec_ntb_mw_get_range(struct ntb_dev *ntb, int idx,
+				      phys_addr_t *base,
+				      resource_size_t *size,
+				      resource_size_t *align,
+				      resource_size_t *align_size)
+{
+	return 0;
+}
+
+static int switchtec_ntb_mw_set_trans(struct ntb_dev *ntb, int idx,
+				      dma_addr_t addr, resource_size_t size)
+{
+	return 0;
+}
+
+static int switchtec_ntb_link_is_up(struct ntb_dev *ntb,
+				    enum ntb_speed *speed,
+				    enum ntb_width *width)
+{
+	return 0;
+}
+
+static int switchtec_ntb_link_enable(struct ntb_dev *ntb,
+				     enum ntb_speed max_speed,
+				     enum ntb_width max_width)
+{
+	return 0;
+}
+
+static int switchtec_ntb_link_disable(struct ntb_dev *ntb)
+{
+	return 0;
+}
+
+static u64 switchtec_ntb_db_valid_mask(struct ntb_dev *ntb)
+{
+	return 0;
+}
+
+static int switchtec_ntb_db_vector_count(struct ntb_dev *ntb)
+{
+	return 0;
+}
+
+static u64 switchtec_ntb_db_vector_mask(struct ntb_dev *ntb, int db_vector)
+{
+	return 0;
+}
+
+static u64 switchtec_ntb_db_read(struct ntb_dev *ntb)
+{
+	return 0;
+}
+
+static int switchtec_ntb_db_clear(struct ntb_dev *ntb, u64 db_bits)
+{
+	return 0;
+}
+
+static int switchtec_ntb_db_set_mask(struct ntb_dev *ntb, u64 db_bits)
+{
+	return 0;
+}
+
+static int switchtec_ntb_db_clear_mask(struct ntb_dev *ntb, u64 db_bits)
+{
+	return 0;
+}
+
+static int switchtec_ntb_peer_db_set(struct ntb_dev *ntb, u64 db_bits)
+{
+	return 0;
+}
+
+static int switchtec_ntb_spad_count(struct ntb_dev *ntb)
+{
+	return 0;
+}
+
+static u32 switchtec_ntb_spad_read(struct ntb_dev *ntb, int idx)
+{
+	return 0;
+}
+
+static int switchtec_ntb_spad_write(struct ntb_dev *ntb, int idx, u32 val)
+{
+	return 0;
+}
+
+static int switchtec_ntb_peer_spad_write(struct ntb_dev *ntb, int idx, u32 val)
+{
+	return 0;
+}
+
+static const struct ntb_dev_ops switchtec_ntb_ops = {
+	.mw_count		= switchtec_ntb_mw_count,
+	.mw_get_range		= switchtec_ntb_mw_get_range,
+	.mw_set_trans		= switchtec_ntb_mw_set_trans,
+	.link_is_up		= switchtec_ntb_link_is_up,
+	.link_enable		= switchtec_ntb_link_enable,
+	.link_disable		= switchtec_ntb_link_disable,
+	.db_valid_mask		= switchtec_ntb_db_valid_mask,
+	.db_vector_count	= switchtec_ntb_db_vector_count,
+	.db_vector_mask		= switchtec_ntb_db_vector_mask,
+	.db_read		= switchtec_ntb_db_read,
+	.db_clear		= switchtec_ntb_db_clear,
+	.db_set_mask		= switchtec_ntb_db_set_mask,
+	.db_clear_mask		= switchtec_ntb_db_clear_mask,
+	.peer_db_set		= switchtec_ntb_peer_db_set,
+	.spad_count		= switchtec_ntb_spad_count,
+	.spad_read		= switchtec_ntb_spad_read,
+	.spad_write		= switchtec_ntb_spad_write,
+	.peer_spad_write	= switchtec_ntb_peer_spad_write,
+};
+
 static void switchtec_ntb_init_sndev(struct switchtec_ntb *sndev)
 {
 	u64 part_map;
+
+	sndev->ntb.pdev = sndev->stdev->pdev;
+	sndev->ntb.topo = NTB_TOPO_NONE;
+	sndev->ntb.ops = &switchtec_ntb_ops;
 
 	sndev->self_partition = sndev->stdev->partition;
 
@@ -453,7 +579,6 @@ static int switchtec_ntb_add(struct device *dev,
 		return -ENOMEM;
 
 	sndev->stdev = stdev;
-
 	switchtec_ntb_init_sndev(sndev);
 	switchtec_ntb_init_mw(sndev);
 	switchtec_ntb_init_db(sndev);
@@ -471,11 +596,17 @@ static int switchtec_ntb_add(struct device *dev,
 	if (rc)
 		goto deinit_shared_and_exit;
 
+	rc = ntb_register_device(&sndev->ntb);
+	if (rc)
+		goto deinit_and_exit;
+
 	stdev->sndev = sndev;
 	dev_info(dev, "NTB device registered");
 
 	return 0;
 
+deinit_and_exit:
+	switchtec_ntb_deinit_db_msg_irq(sndev);
 deinit_shared_and_exit:
 	switchtec_ntb_deinit_shared_mw(sndev);
 free_and_exit:
@@ -494,6 +625,7 @@ void switchtec_ntb_remove(struct device *dev,
 		return;
 
 	stdev->sndev = NULL;
+	ntb_unregister_device(&sndev->ntb);
 	switchtec_ntb_deinit_db_msg_irq(sndev);
 	switchtec_ntb_deinit_shared_mw(sndev);
 	kfree(sndev);
