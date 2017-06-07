@@ -18,6 +18,7 @@
 
 #include <linux/pci.h>
 #include <linux/cdev.h>
+#include <linux/notifier.h>
 
 #define MICROSEMI_VENDOR_ID         0x11f8
 #define MICROSEMI_NTB_CLASSCODE     0x068000
@@ -344,6 +345,10 @@ struct switchtec_dev {
 
 	wait_queue_head_t event_wq;
 	atomic_t event_cnt;
+
+	struct work_struct link_event_work;
+	struct blocking_notifier_head link_notifier;
+	u8 link_event_count[SWITCHTEC_MAX_PFF_CSR];
 };
 
 static inline struct switchtec_dev *to_stdev(struct device *dev)
