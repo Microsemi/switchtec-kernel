@@ -103,6 +103,13 @@ struct sw_event_regs {
 	u32 reserved16[4];
 } __packed;
 
+enum {
+	SWITCHTEC_CFG0_RUNNING = 0x04,
+	SWITCHTEC_CFG1_RUNNING = 0x05,
+	SWITCHTEC_IMG0_RUNNING = 0x03,
+	SWITCHTEC_IMG1_RUNNING = 0x07,
+};
+
 struct sys_info_regs {
 	u32 device_id;
 	u32 device_version;
@@ -112,7 +119,9 @@ struct sys_info_regs {
 	u32 table_format_version;
 	u32 partition_id;
 	u32 cfg_file_fmt_version;
-	u32 reserved2[58];
+	u16 cfg_running;
+	u16 img_running;
+	u32 reserved2[57];
 	char vendor_id[8];
 	char product_id[16];
 	char product_revision[4];
