@@ -1,2 +1,4 @@
+LINUXINCLUDE := -I$(src) $(LINUXINCLUDE)
+
 obj-m := switchtec.o switchtec_ntb.o
-ccflags-y := -I$(src) -Wall -Werror -Werror=implicit-function-declaration
+ccflags-y := -Wall -Werror -Werror=implicit-function-declaration
