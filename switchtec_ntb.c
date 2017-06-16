@@ -17,6 +17,7 @@
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
+#include <linux/kthread.h>
 #include <linux/ntb.h>
 
 MODULE_DESCRIPTION("Microsemi Switchtec(tm) NTB Driver");
@@ -150,7 +151,11 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 	iowrite32(op, &ctl->partition_op);
 
 	for (i = 0; i < 1000; i++) {
-		mdelay(50);
+		if (msleep_interruptible(50) != 0) {
+			iowrite32(NTB_CTRL_PART_OP_RESET, &ctl->partition_op);
+			return -EINTR;
+		}
+
 		ps = ioread32(&ctl->partition_status) & 0xFFFF;
 
 		if (ps != status)
