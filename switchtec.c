@@ -987,7 +987,7 @@ static void link_event_work(struct work_struct *work)
 
 	stdev = container_of(work, struct switchtec_dev, link_event_work);
 
-	dev_dbg(&stdev->dev, "%s\n", __func__);
+	dev_dbg(&stdev->dev, "link event work occurred\n");
 
 	blocking_notifier_call_chain(&stdev->link_notifier, 0, stdev);
 }
@@ -1001,7 +1001,7 @@ static void check_link_state_events(struct switchtec_dev *stdev)
 
 	for (idx = 0; idx < stdev->pff_csr_count; idx++) {
 		reg = ioread32(&stdev->mmio_pff_csr[idx].link_state_hdr);
-		dev_dbg(&stdev->dev, "%s: %d->%08x\n", __func__, idx, reg);
+		dev_dbg(&stdev->dev, "link state: %d->%08x\n", idx, reg);
 		count = (reg >> 5) & 0xFF;
 
 		if (count != stdev->link_event_count[idx]) {
