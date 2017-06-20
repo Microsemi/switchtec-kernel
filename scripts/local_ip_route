@@ -2,8 +2,8 @@
 
 set -e
 
-IFACE1=eth2
-IFACE2=eth3
+IFACE1=ntb0
+IFACE2=ntb1
 
 IFACE1_ADDR=172.18.1.1
 IFACE1_VADDR=172.18.11.1
@@ -26,6 +26,9 @@ ip addr add $IFACE2_ADDR dev $IFACE2
 
 ip link set dev $IFACE1 up
 ip link set dev $IFACE2 up
+
+ip link set dev $IFACE1 group 1
+ip link set dev $IFACE2 group 1
 
 # nat source IP 10.50.0.1 -> 10.60.0.1 when going to 10.60.1.1
 iptables_add POSTROUTING -s $IFACE1_ADDR -d $IFACE2_VADDR -j SNAT \
