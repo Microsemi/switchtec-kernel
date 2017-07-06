@@ -1309,6 +1309,7 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 	cdev = &stdev->cdev;
 	cdev_init(cdev, &switchtec_fops);
 	cdev->owner = THIS_MODULE;
+	cdev->kobj.parent = &dev->kobj;
 
 	return stdev;
 
@@ -1499,7 +1500,11 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 		  SWITCHTEC_EVENT_EN_IRQ,
 		  &stdev->mmio_part_cfg->mrpc_comp_hdr);
 
-	rc = cdev_device_add(&stdev->cdev, &stdev->dev);
+	rc = cdev_add(&stdev->cdev, stdev->dev.devt, 1);
+	if (rc)
+		goto err_put;
+
+	rc = device_add(&stdev->dev);
 	if (rc)
 		goto err_devadd;
 
@@ -1508,6 +1513,7 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 	return 0;
 
 err_devadd:
+	cdev_del(&stdev->cdev);
 	stdev_kill(stdev);
 err_put:
 	ida_simple_remove(&switchtec_minor_ida, MINOR(stdev->dev.devt));
@@ -1521,7 +1527,8 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 
 	pci_set_drvdata(pdev, NULL);
 
-	cdev_device_del(&stdev->cdev, &stdev->dev);
+	device_del(&stdev->dev);
+	cdev_del(&stdev->cdev);
 	ida_simple_remove(&switchtec_minor_ida, MINOR(stdev->dev.devt));
 	dev_info(&stdev->dev, "unregistered.\n");
 
