@@ -1131,13 +1131,13 @@ void switchtec_ntb_remove(struct device *dev,
 }
 
 static struct class_interface switchtec_interface  = {
-	.class = &switchtec_class,
 	.add_dev = switchtec_ntb_add,
 	.remove_dev = switchtec_ntb_remove,
 };
 
 static int __init switchtec_ntb_init(void)
 {
+	switchtec_interface.class = switchtec_class;
 	return class_interface_register(&switchtec_interface);
 }
 module_init(switchtec_ntb_init);
