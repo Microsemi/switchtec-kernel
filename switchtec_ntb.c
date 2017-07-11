@@ -16,8 +16,8 @@
 #include <linux/switchtec.h>
 #include <linux/module.h>
 #include <linux/delay.h>
-#include <linux/interrupt.h>
 #include <linux/kthread.h>
+#include <linux/interrupt.h>
 #include <linux/ntb.h>
 
 MODULE_DESCRIPTION("Microsemi Switchtec(tm) NTB Driver");
@@ -28,7 +28,7 @@ MODULE_AUTHOR("Microsemi Corporation");
 static ulong max_mw_size = SZ_2M;
 module_param(max_mw_size, ulong, 0644);
 MODULE_PARM_DESC(max_mw_size,
-	"Limit the size of the memory windows reported to the upper layer");
+	"Max memory window size reported to the upper layer");
 
 static bool use_lut_mws;
 module_param(use_lut_mws, bool, 0644);
