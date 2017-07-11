@@ -707,6 +707,7 @@ const struct event_reg {
 	EV_GLB(SWITCHTEC_IOCTL_EVENT_CLI_MRPC_COMP_ASYNC,
 	       cli_mrpc_comp_async_hdr),
 	EV_GLB(SWITCHTEC_IOCTL_EVENT_GPIO_INT, gpio_interrupt_hdr),
+	EV_GLB(SWITCHTEC_IOCTL_EVENT_GFMS, gfms_event_hdr),
 	EV_PAR(SWITCHTEC_IOCTL_EVENT_PART_RESET, part_reset_hdr),
 	EV_PAR(SWITCHTEC_IOCTL_EVENT_MRPC_COMP, mrpc_comp_hdr),
 	EV_PAR(SWITCHTEC_IOCTL_EVENT_MRPC_COMP_ASYNC, mrpc_comp_async_hdr),
@@ -984,9 +985,8 @@ static void link_event_work(struct work_struct *work)
 
 	stdev = container_of(work, struct switchtec_dev, link_event_work);
 
-	dev_dbg(&stdev->dev, "link event work occurred\n");
-
-	blocking_notifier_call_chain(&stdev->link_notifier, 0, stdev);
+	if (stdev->link_notifier)
+		stdev->link_notifier(stdev);
 }
 
 static void check_link_state_events(struct switchtec_dev *stdev)
@@ -998,7 +998,7 @@ static void check_link_state_events(struct switchtec_dev *stdev)
 
 	for (idx = 0; idx < stdev->pff_csr_count; idx++) {
 		reg = ioread32(&stdev->mmio_pff_csr[idx].link_state_hdr);
-		dev_dbg(&stdev->dev, "link state: %d->%08x\n", idx, reg);
+		dev_dbg(&stdev->dev, "link_state: %d->%08x\n", idx, reg);
 		count = (reg >> 5) & 0xFF;
 
 		if (count != stdev->link_event_count[idx]) {
@@ -1075,7 +1075,6 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 	INIT_WORK(&stdev->mrpc_work, mrpc_event_work);
 	INIT_DELAYED_WORK(&stdev->mrpc_timeout, mrpc_timeout_work);
 	INIT_WORK(&stdev->link_event_work, link_event_work);
-	BLOCKING_INIT_NOTIFIER_HEAD(&stdev->link_notifier);
 	init_waitqueue_head(&stdev->event_wq);
 	atomic_set(&stdev->event_cnt, 0);
 
