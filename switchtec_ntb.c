@@ -112,7 +112,6 @@ struct switchtec_ntb {
 	bool link_is_up;
 	enum ntb_speed link_speed;
 	enum ntb_width link_width;
-	struct notifier_block link_notifier;
 };
 
 static struct switchtec_ntb *ntb_sndev(struct ntb_dev *ntb)
@@ -461,35 +460,11 @@ static void switchtec_ntb_check_link(struct switchtec_ntb *sndev)
 	}
 }
 
-static void switchtec_ntb_link_event(struct switchtec_ntb *sndev, int msg)
+static void switchtec_ntb_link_notification(struct switchtec_dev *stdev)
 {
+	struct switchtec_ntb *sndev = stdev->sndev;
+
 	switchtec_ntb_check_link(sndev);
-}
-
-static int switchtec_ntb_link_notification(struct notifier_block *nb,
-					   unsigned long event, void *data)
-{
-	struct switchtec_ntb *sndev = container_of(nb, struct switchtec_ntb,
-						   link_notifier);
-
-	dev_dbg(&sndev->stdev->dev, "link message received");
-	switchtec_ntb_check_link(sndev);
-
-	return NOTIFY_OK;
-}
-
-static int switchtec_ntb_init_link_notifier(struct switchtec_ntb *sndev)
-{
-	sndev->link_notifier.notifier_call = switchtec_ntb_link_notification;
-
-	return blocking_notifier_chain_register(&sndev->stdev->link_notifier,
-						&sndev->link_notifier);
-}
-
-static void switchtec_ntb_deinit_link_notifier(struct switchtec_ntb *sndev)
-{
-	blocking_notifier_chain_unregister(&sndev->stdev->link_notifier,
-					   &sndev->link_notifier);
 }
 
 static int switchtec_ntb_link_is_up(struct ntb_dev *ntb,
@@ -989,7 +964,7 @@ static irqreturn_t switchtec_ntb_message_isr(int irq, void *dev)
 			iowrite8(1, &sndev->mmio_self_dbmsg->imsg[i].status);
 
 			if (i == LINK_MESSAGE)
-				switchtec_ntb_link_event(sndev, msg);
+				switchtec_ntb_check_link(sndev);
 		}
 	}
 
@@ -1087,22 +1062,18 @@ static int switchtec_ntb_add(struct device *dev,
 	if (rc)
 		goto deinit_shared_and_exit;
 
-	rc = switchtec_ntb_init_link_notifier(sndev);
-	if (rc)
-		goto denit_db_msg_and_exit;
 
 	rc = ntb_register_device(&sndev->ntb);
 	if (rc)
 		goto deinit_and_exit;
 
 	stdev->sndev = sndev;
+	stdev->link_notifier = switchtec_ntb_link_notification;
 	dev_info(dev, "NTB device registered");
 
 	return 0;
 
 deinit_and_exit:
-	switchtec_ntb_deinit_link_notifier(sndev);
-denit_db_msg_and_exit:
 	switchtec_ntb_deinit_db_msg_irq(sndev);
 deinit_shared_and_exit:
 	switchtec_ntb_deinit_shared_mw(sndev);
@@ -1121,9 +1092,9 @@ void switchtec_ntb_remove(struct device *dev,
 	if (!sndev)
 		return;
 
+	stdev->link_notifier = NULL;
 	stdev->sndev = NULL;
 	ntb_unregister_device(&sndev->ntb);
-	switchtec_ntb_deinit_link_notifier(sndev);
 	switchtec_ntb_deinit_db_msg_irq(sndev);
 	switchtec_ntb_deinit_shared_mw(sndev);
 	kfree(sndev);

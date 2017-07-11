@@ -361,7 +361,7 @@ struct switchtec_dev {
 	atomic_t event_cnt;
 
 	struct work_struct link_event_work;
-	struct blocking_notifier_head link_notifier;
+	void (*link_notifier)(struct switchtec_dev *stdev);
 	u8 link_event_count[SWITCHTEC_MAX_PFF_CSR];
 
 	struct switchtec_ntb *sndev;
