@@ -101,6 +101,9 @@ struct sw_event_regs {
 	u32 gpio_interrupt_hdr;
 	u32 gpio_interrupt_data;
 	u32 reserved16[4];
+	u32 gfms_event_hdr;
+	u32 gfms_event_data;
+	u32 reserved17[4];
 } __packed;
 
 enum {
@@ -358,10 +361,6 @@ struct switchtec_dev {
 
 	wait_queue_head_t event_wq;
 	atomic_t event_cnt;
-
-	struct work_struct link_event_work;
-	struct blocking_notifier_head link_notifier;
-	u8 link_event_count[SWITCHTEC_MAX_PFF_CSR];
 
 	struct switchtec_ntb *sndev;
 };
