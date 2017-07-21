@@ -1154,8 +1154,6 @@ static int switchtec_ntb_add(struct device *dev,
 	if (rc)
 		goto deinit_shared_and_exit;
 
-	switchtec_ntb_init_mw(sndev);
-
 	rc = ntb_register_device(&sndev->ntb);
 	if (rc)
 		goto deinit_and_exit;
