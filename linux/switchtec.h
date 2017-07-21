@@ -172,6 +172,15 @@ struct ntb_info_regs {
 	u16 reserved1;
 	u64 ep_map;
 	u16 requester_id;
+	u16 reserved2;
+	u32 reserved3[4];
+	struct {
+		u8 enabled;
+		u8 partition_vec_low;
+		u8 partition_vec_high;
+		u8 reserved1;
+		u32 reserved2[3];
+	} crosslink[48];
 } __packed;
 
 struct part_cfg_regs {
