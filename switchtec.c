@@ -1278,7 +1278,7 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 	int rc;
 
 	if (pdev->class == MICROSEMI_NTB_CLASSCODE)
-		request_module_nowait("switchtec_ntb");
+		request_module_nowait("ntb_hw_switchtec");
 
 	stdev = stdev_create(pdev);
 	if (IS_ERR(stdev))
