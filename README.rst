@@ -83,7 +83,7 @@ The following IOCTLs are also supported by the device:
 Non-Transparent Bridge (NTB) Driver
 ===================================
 
-An NTB driver is provided for the switchtec hardware in switchec_ntb.
+An NTB driver is provided for the switchtec hardware in switchtec_ntb.
 Currently, it only supports switches configured with exactly 2
 partitions. It also requires the following configuration settings:
 
