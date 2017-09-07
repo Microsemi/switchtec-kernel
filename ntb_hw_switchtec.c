@@ -597,10 +597,10 @@ static int switchtec_ntb_db_set_mask(struct ntb_dev *ntb, u64 db_bits)
 		return -EINVAL;
 
 	spin_lock_irqsave(&sndev->db_mask_lock, irqflags);
-	{
-		sndev->db_mask |= db_bits << sndev->db_shift;
-		iowrite64(~sndev->db_mask, &sndev->mmio_self_dbmsg->idb_mask);
-	}
+
+	sndev->db_mask |= db_bits << sndev->db_shift;
+	iowrite64(~sndev->db_mask, &sndev->mmio_self_dbmsg->idb_mask);
+
 	spin_unlock_irqrestore(&sndev->db_mask_lock, irqflags);
 
 	return 0;
@@ -615,10 +615,10 @@ static int switchtec_ntb_db_clear_mask(struct ntb_dev *ntb, u64 db_bits)
 		return -EINVAL;
 
 	spin_lock_irqsave(&sndev->db_mask_lock, irqflags);
-	{
-		sndev->db_mask &= ~(db_bits << sndev->db_shift);
-		iowrite64(~sndev->db_mask, &sndev->mmio_self_dbmsg->idb_mask);
-	}
+
+	sndev->db_mask &= ~(db_bits << sndev->db_shift);
+	iowrite64(~sndev->db_mask, &sndev->mmio_self_dbmsg->idb_mask);
+
 	spin_unlock_irqrestore(&sndev->db_mask_lock, irqflags);
 
 	return 0;
@@ -890,8 +890,10 @@ static void switchtec_ntb_init_msgs(struct switchtec_ntb *sndev)
 static int switchtec_ntb_init_req_id_table(struct switchtec_ntb *sndev)
 {
 	int rc = 0;
-	u16 req_id = ioread16(&sndev->mmio_ntb->requester_id);
+	u16 req_id;
 	u32 error;
+
+	req_id = ioread16(&sndev->mmio_ntb->requester_id);
 
 	if (ioread32(&sndev->mmio_self_ctrl->req_id_table_size) < 2) {
 		dev_err(&sndev->stdev->dev,
@@ -908,18 +910,21 @@ static int switchtec_ntb_init_req_id_table(struct switchtec_ntb *sndev)
 	iowrite32(NTB_PART_CTRL_ID_PROT_DIS,
 		  &sndev->mmio_self_ctrl->partition_ctrl);
 
-	// Root Complex Requester ID
+	/*
+	 * Root Complex Requester ID (which is 0:00.0)
+	 */
 	iowrite32(0 << 16 | NTB_CTRL_REQ_ID_EN,
 		  &sndev->mmio_self_ctrl->req_id_table[0]);
 
-	// Host Bridge Requester ID
+	/*
+	 * Host Bridge Requester ID (as read from the mmap address)
+	 */
 	iowrite32(req_id << 16 | NTB_CTRL_REQ_ID_EN,
 		  &sndev->mmio_self_ctrl->req_id_table[1]);
 
 	rc = switchtec_ntb_part_op(sndev, sndev->mmio_self_ctrl,
 				   NTB_CTRL_PART_OP_CFG,
 				   NTB_CTRL_PART_STATUS_NORMAL);
-
 	if (rc == -EIO) {
 		error = ioread32(&sndev->mmio_self_ctrl->req_id_error);
 		dev_err(&sndev->stdev->dev,
@@ -981,8 +986,8 @@ static int switchtec_ntb_init_shared_mw(struct switchtec_ntb *sndev)
 		goto unalloc_and_exit;
 
 	ctl_val = ioread32(&ctl->bar_entry[bar].ctl);
-	ctl_val |= NTB_CTRL_BAR_LUT_WIN_EN;
 	ctl_val &= 0xFF;
+	ctl_val |= NTB_CTRL_BAR_LUT_WIN_EN;
 	ctl_val |= ilog2(LUT_SIZE) << 8;
 	ctl_val |= (sndev->nr_lut_mw - 1) << 14;
 	iowrite32(ctl_val, &ctl->bar_entry[bar].ctl);
