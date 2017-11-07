@@ -472,7 +472,7 @@ static int crosslink_is_enabled(struct switchtec_ntb *sndev)
 {
 	struct ntb_info_regs __iomem *inf = sndev->mmio_ntb;
 
-	return ioread8(&inf->crosslink[sndev->self_partition].enabled);
+	return ioread8(&inf->ntp_info[sndev->self_partition].xlink_enabled);
 }
 
 static void crosslink_init_dbmsgs(struct switchtec_ntb *sndev)
