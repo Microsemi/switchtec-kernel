@@ -10,3 +10,6 @@ copyto
 *.o
 __pycache__
 .project.sl
+cscope.out
+tags
+*.o.d

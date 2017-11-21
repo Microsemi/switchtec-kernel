@@ -174,13 +174,12 @@ struct ntb_info_regs {
 	u16 requester_id;
 	u16 reserved2;
 	u32 reserved3[4];
-	struct {
-		u8 enabled;
-		u8 partition_vec_low;
-		u8 partition_vec_high;
-		u8 reserved1;
-		u32 reserved2[3];
-	} crosslink[48];
+	struct nt_partition_info {
+		u32 xlink_enabled;
+		u32 target_part_low;
+		u32 target_part_high;
+		u32 reserved;
+	} ntp_info[48];
 } __packed;
 
 struct part_cfg_regs {
