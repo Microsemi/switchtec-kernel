@@ -20,8 +20,9 @@
 #include <linux/interrupt.h>
 #include <linux/ntb.h>
 
+#include "version.h"
 MODULE_DESCRIPTION("Microsemi Switchtec(tm) NTB Driver");
-MODULE_VERSION("0.1");
+MODULE_VERSION(VERSION);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Microsemi Corporation");
 
