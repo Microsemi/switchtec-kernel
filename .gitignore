@@ -13,3 +13,4 @@ __pycache__
 cscope.out
 tags
 *.o.d
+version.h
