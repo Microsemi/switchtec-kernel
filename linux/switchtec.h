@@ -18,7 +18,6 @@
 
 #include <linux/pci.h>
 #include <linux/cdev.h>
-#include <linux/notifier.h>
 
 #define MICROSEMI_VENDOR_ID         0x11f8
 #define MICROSEMI_NTB_CLASSCODE     0x068000
