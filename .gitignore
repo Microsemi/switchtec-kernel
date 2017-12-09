@@ -10,4 +10,3 @@ copyto
 *.o
 __pycache__
 .project.sl
-version.h

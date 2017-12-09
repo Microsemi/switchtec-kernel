@@ -17,11 +17,6 @@ install: modules_install
 
 .PHONY: install
 
-version.h: FORCE $(OBJDIR)
-	@$(SHELL_PATH) ./VERSION-GEN
-
-modules: | version.h
-
 %::
 	$(MAKE) -C $(KERNEL_SOURCES) M=$$PWD $@
 
@@ -38,7 +33,5 @@ pahole: pahole64 pahole32
 		echo "!!Arches don't match!!"
 
 clean::
-	rm -f pahole32 pahole64 pahole*.txt version.h
+	rm -f pahole32 pahole64 pahole*.txt
 	$(MAKE) -C $(KERNEL_SOURCES) M=$$PWD $@
-
-.PHONY: FORCE
