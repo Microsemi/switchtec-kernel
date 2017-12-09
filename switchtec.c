@@ -23,8 +23,9 @@
 #include <linux/poll.h>
 #include <linux/wait.h>
 
+#include "version.h"
 MODULE_DESCRIPTION("Microsemi Switchtec(tm) PCIe Management Driver");
-MODULE_VERSION("0.1");
+MODULE_VERSION(VERSION);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Microsemi Corporation");
 
@@ -687,7 +688,7 @@ static u32 __iomem *pff_ev_reg(struct switchtec_dev *stdev,
 #define EV_PAR(i, r)[i] = {offsetof(struct part_cfg_regs, r), part_ev_reg}
 #define EV_PFF(i, r)[i] = {offsetof(struct pff_csr_regs, r), pff_ev_reg}
 
-const struct event_reg {
+static const struct event_reg {
 	size_t offset;
 	u32 __iomem *(*map_reg)(struct switchtec_dev *stdev,
 				size_t offset, int index);

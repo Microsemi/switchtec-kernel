@@ -90,3 +90,9 @@ partitions. It also requires the following configuration settings:
 * Both partitions must be able to access each other's GAS spaces.
   Thus, the bits in the GAS Access Vector under Management Settings
   must be set to support this.
+* NT EP BAR 2 will be dynamically configured as a Direct Window
+  (configuration file does not need to configure explicitly)
+* Kernel configuration MUST include support for NTB (CONFIG_NTB needs to be set)
+
+The NTB driver offers a virtual NIC interface between two hosts
+connected to one switch with two partitions (each with an NT EP).
