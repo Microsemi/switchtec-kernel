@@ -953,7 +953,7 @@ static int config_rsvd_lut_win(struct switchtec_ntb *sndev,
 		bar_error = ioread32(&ctl->bar_error);
 		lut_error = ioread32(&ctl->lut_error);
 		dev_err(&sndev->stdev->dev,
-			"Error setting up reserved lut window: %08x / %08x",
+			"Error setting up reserved lut window: %08x / %08x\n",
 			bar_error, lut_error);
 		return rc;
 	}
@@ -1066,7 +1066,7 @@ static int crosslink_setup_mws(struct switchtec_ntb *sndev, int ntb_lut_idx,
 		bar_error = ioread32(&ctl->bar_error);
 		lut_error = ioread32(&ctl->lut_error);
 		dev_err(&sndev->stdev->dev,
-			"Error setting up cross link windows: %08x / %08x",
+			"Error setting up cross link windows: %08x / %08x\n",
 			bar_error, lut_error);
 		return rc;
 	}
@@ -1144,7 +1144,7 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 	if (!crosslink_is_enabled(sndev))
 		return 0;
 
-	dev_info(&sndev->stdev->dev, "Using crosslink configuration");
+	dev_info(&sndev->stdev->dev, "Using crosslink configuration\n");
 
 	bar_cnt = crosslink_enum_partition(sndev, bar_addrs);
 	if (bar_cnt < sndev->nr_direct_mw + 1) {
@@ -1298,7 +1298,7 @@ switchtec_ntb_init_req_id_table(struct switchtec_ntb *sndev)
 	req_ids[0] = 0;
 
 	/*
-	 * Host Bridge
+	 * Host Bridge Requester ID (as read from the mmap address)
 	 */
 	req_ids[1] = ioread16(&sndev->mmio_ntb->requester_id);
 
