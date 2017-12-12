@@ -83,16 +83,20 @@ The following IOCTLs are also supported by the device:
 Non-Transparent Bridge (NTB) Driver
 ===================================
 
-An NTB driver is provided for the switchtec hardware in switchtec_ntb.
-Currently, it only supports switches configured with exactly 2
-partitions. It also requires the following configuration settings:
+An NTB hardware driver is provided for the switchtec hardware in
+ntb_hw_switchtec. Currently, it only supports switches configured with
+exactly 2 NT partitions and zero or more non-NT partitions. It also requires
+the following configuration settings:
 
-* Both partitions must be able to access each other's GAS spaces.
+* Both NT partitions must be able to access each other's GAS spaces.
   Thus, the bits in the GAS Access Vector under Management Settings
   must be set to support this.
-* NT EP BAR 2 will be dynamically configured as a Direct Window
-  (configuration file does not need to configure explicitly)
-* Kernel configuration MUST include support for NTB (CONFIG_NTB needs to be set)
+* Kernel configuration MUST include support for NTB (CONFIG_NTB needs
+  to be set)
 
-The NTB driver offers a virtual NIC interface between two hosts
-connected to one switch with two partitions (each with an NT EP).
+NT EP BAR 2 will be dynamically configured as a Direct Window, and
+the configuration file does not need to configure it explicitly.
+
+Please refer to Documentation/ntb.txt in Linux source tree for an overall
+understanding of the Linux NTB stack. ntb_hw_switchtec works as an NTB
+Hardware Driver in this stack.
