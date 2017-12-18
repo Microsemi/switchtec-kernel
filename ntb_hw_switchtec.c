@@ -377,7 +377,7 @@ static int switchtec_ntb_mw_set_trans(struct ntb_dev *ntb, int idx,
 	if (xlate_pos < 12)
 		return -EINVAL;
 
-	if (addr & ((1 << xlate_pos) - 1)) {
+	if (!IS_ALIGNED(addr, BIT_ULL(xlate_pos))) {
 		/*
 		 * In certain circumstances we can get a buffer that is
 		 * not aligned to its size. (Most of the time
