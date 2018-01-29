@@ -859,7 +859,7 @@ static int switchtec_ntb_init_sndev(struct switchtec_ntb *sndev)
 	int bit;
 
 	sndev->ntb.pdev = sndev->stdev->pdev;
-	sndev->ntb.topo = NTB_TOPO_SWITCH;
+	sndev->ntb.topo = NTB_TOPO_NONE;
 	sndev->ntb.ops = &switchtec_ntb_ops;
 
 	INIT_WORK(&sndev->link_reinit_work, link_reinit_work);
