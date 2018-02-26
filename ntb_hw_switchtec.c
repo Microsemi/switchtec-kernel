@@ -19,6 +19,7 @@
 #include <linux/kthread.h>
 #include <linux/interrupt.h>
 #include <linux/ntb.h>
+#include <linux/sizes.h>
 
 #include "version.h"
 MODULE_DESCRIPTION("Microsemi Switchtec(tm) NTB Driver");
