@@ -59,6 +59,12 @@ enum mrpc_status {
 	SWITCHTEC_MRPC_STATUS_INTERRUPTED = 0x100,
 };
 
+struct event {
+	uint32_t hdr;
+	uint32_t data[5];
+};
+
+
 struct sw_event_regs {
 	u64 event_report_ctrl;
 	u64 reserved1;
@@ -100,9 +106,12 @@ struct sw_event_regs {
 	u32 gpio_interrupt_hdr;
 	u32 gpio_interrupt_data;
 	u32 reserved16[4];
-	u32 gfms_event_hdr;
+	u32 gfms_event_hdr;		//Event specific for PAX
 	u32 gfms_event_data;
 	u32 reserved17[4];
+	uint32_t reserved18[60];
+	struct event customer_events[6];
+	uint32_t reserved19[320];
 } __packed;
 
 enum {
@@ -204,7 +213,9 @@ struct part_cfg_regs {
 	u32 mrpc_comp_async_data[5];
 	u32 dyn_binding_hdr;
 	u32 dyn_binding_data[5];
-	u32 reserved4[159];
+	uint32_t reserved4[120];
+	struct event customer_events[6];
+	uint32_t reserved5[3];
 } __packed;
 
 enum {
@@ -341,7 +352,9 @@ struct pff_csr_regs {
 	u32 credit_timeout_data[5];
 	u32 link_state_hdr;
 	u32 link_state_data[5];
-	u32 reserved4[174];
+	uint32_t reserved4[66];
+	struct event customer_events[6];
+	uint32_t reserved5[72];
 } __packed;
 
 struct switchtec_ntb;
