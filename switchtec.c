@@ -33,6 +33,37 @@ static int max_devices = 16;
 module_param(max_devices, int, 0644);
 MODULE_PARM_DESC(max_devices, "max number of switchtec device instances");
 
+
+#ifndef ioread64
+#ifdef readq
+#define ioread64 readq
+#else
+#define ioread64 _ioread64
+static inline u64 _ioread64(void __iomem *mmio)
+{
+	u64 low, high;
+
+	low = ioread32(mmio);
+	high = ioread32(mmio + sizeof(u32));
+	return low | (high << 32);
+}
+#endif
+#endif
+
+#ifndef iowrite64
+#ifdef writeq
+#define iowrite64 writeq
+#else
+#define iowrite64 _iowrite64
+static inline void _iowrite64(u64 val, void __iomem *mmio)
+{
+	iowrite32(val, mmio);
+	iowrite32(val >> 32, mmio + sizeof(u32));
+}
+#endif
+#endif
+
+
 static dev_t switchtec_devt;
 static DEFINE_IDA(switchtec_minor_ida);
 
@@ -200,6 +231,45 @@ out:
 	mrpc_cmd_submit(stdev);
 }
 
+static void dma_mrpc_complete_cmd(struct switchtec_dev *stdev)
+{
+	/* requires the mrpc_mutex to already be held when called */
+	struct switchtec_user *stuser;
+
+	dev_dbg(&stdev->dev, "%s\n", __func__);
+	if (list_empty(&stdev->mrpc_queue))
+		return;
+
+	stuser = list_entry(stdev->mrpc_queue.next, struct switchtec_user,
+			    list);
+
+	stuser->status = stdev->mrpc_output_addr->status; 
+	if (stuser->status == SWITCHTEC_MRPC_STATUS_INPROGRESS)
+		return;
+
+	stuser_set_state(stuser, MRPC_DONE);
+	stuser->return_code = 0;
+
+	if (stuser->status != SWITCHTEC_MRPC_STATUS_DONE)
+		goto out;
+
+	stuser->return_code = stdev->mrpc_output_addr->rtn_code;
+	if (stuser->return_code != 0)
+		goto out;
+
+	memcpy_fromio(stuser->data, &stdev->mrpc_output_addr->data,
+		      stuser->read_len);
+
+out:
+	complete_all(&stuser->comp);
+	list_del_init(&stuser->list);
+	stuser_put(stuser);
+	stdev->mrpc_busy = 0;
+
+	mrpc_cmd_submit(stdev);
+}
+
+
 static void mrpc_event_work(struct work_struct *work)
 {
 	struct switchtec_dev *stdev;
@@ -211,6 +281,20 @@ static void mrpc_event_work(struct work_struct *work)
 	mutex_lock(&stdev->mrpc_mutex);
 	cancel_delayed_work(&stdev->mrpc_timeout);
 	mrpc_complete_cmd(stdev);
+	mutex_unlock(&stdev->mrpc_mutex);
+}
+
+static void dma_mrpc_event_work(struct work_struct *work)
+{
+	struct switchtec_dev *stdev;
+
+	stdev = container_of(work, struct switchtec_dev, dma_mrpc_work);
+
+	dev_dbg(&stdev->dev, "%s\n", __func__);
+
+	mutex_lock(&stdev->mrpc_mutex);
+	cancel_delayed_work(&stdev->mrpc_timeout);
+	dma_mrpc_complete_cmd(stdev);
 	mutex_unlock(&stdev->mrpc_mutex);
 }
 
@@ -233,6 +317,9 @@ static void mrpc_timeout_work(struct work_struct *work)
 	}
 
 	mrpc_complete_cmd(stdev);
+
+	if(stdev->dma_mrpc)
+		dma_mrpc_complete_cmd(stdev);
 
 out:
 	mutex_unlock(&stdev->mrpc_mutex);
@@ -1022,7 +1109,11 @@ static void enable_link_state_events(struct switchtec_dev *stdev)
 static void stdev_release(struct device *dev)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
-
+	if (stdev->dma_mrpc){
+		dma_free_coherent(&stdev->pdev->dev, sizeof(*stdev->mrpc_output_addr),
+				stdev->mrpc_output_addr, stdev->mrpc_output_dma);
+		stdev->dma_mrpc = NULL;
+	}
 	kfree(stdev);
 }
 
@@ -1070,6 +1161,7 @@ static struct switchtec_dev *stdev_create(struct pci_dev *pdev)
 	mutex_init(&stdev->mrpc_mutex);
 	stdev->mrpc_busy = 0;
 	INIT_WORK(&stdev->mrpc_work, mrpc_event_work);
+	INIT_WORK(&stdev->dma_mrpc_work, dma_mrpc_event_work);
 	INIT_DELAYED_WORK(&stdev->mrpc_timeout, mrpc_timeout_work);
 	INIT_WORK(&stdev->link_event_work, link_event_work);
 	init_waitqueue_head(&stdev->event_wq);
@@ -1178,10 +1270,27 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 	return ret;
 }
 
+
+static irqreturn_t switchtec_mrpc_isr(int irq, void *dev)
+{
+	struct switchtec_dev *stdev = dev;
+	irqreturn_t ret = IRQ_NONE;
+
+	dev_dbg(&stdev->dev, "%s: mrpc comp\n", __func__);
+	iowrite32(SWITCHTEC_EVENT_CLEAR |
+		  SWITCHTEC_EVENT_EN_IRQ,
+		  &stdev->mmio_part_cfg->mrpc_comp_hdr);
+	schedule_work(&stdev->dma_mrpc_work);
+
+	ret = IRQ_HANDLED;
+	return ret;
+}
+
 static int switchtec_init_isr(struct switchtec_dev *stdev)
 {
 	int nvecs;
 	int event_irq;
+	int rc;
 
 	nvecs = pci_alloc_irq_vectors(stdev->pdev, 1, 4,
 				      PCI_IRQ_MSIX | PCI_IRQ_MSI);
@@ -1196,9 +1305,28 @@ static int switchtec_init_isr(struct switchtec_dev *stdev)
 	if (event_irq < 0)
 		return event_irq;
 
-	return devm_request_irq(&stdev->pdev->dev, event_irq,
+	rc =  devm_request_irq(&stdev->pdev->dev, event_irq,
 				switchtec_event_isr, 0,
 				KBUILD_MODNAME, stdev);
+
+	if (rc)
+		return rc;
+
+	if (stdev->dma_mrpc){
+		event_irq = ioread32(&stdev->mmio_mrpc->dma_vector);
+		if (event_irq < 0 || event_irq >= nvecs)
+			return -EFAULT;
+
+		event_irq = pci_irq_vector(stdev->pdev, event_irq);
+		if (event_irq < 0)
+			return event_irq;
+
+		rc = devm_request_irq(&stdev->pdev->dev, event_irq,
+					switchtec_mrpc_isr, 0,
+					KBUILD_MODNAME, stdev);
+	}
+
+	return rc;
 }
 
 static void init_pff(struct switchtec_dev *stdev)
@@ -1264,6 +1392,14 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 
 	pci_set_drvdata(pdev, stdev);
 
+	stdev->dma_mrpc = ioread32(&stdev->mmio_mrpc->dma_ver)? true : false;
+	if (stdev->dma_mrpc){
+		stdev->mrpc_output_addr = dma_zalloc_coherent(&stdev->pdev->dev, sizeof(*stdev->mrpc_output_addr),
+								&stdev->mrpc_output_dma, GFP_KERNEL);
+		if (stdev->mrpc_output_addr == NULL)
+			return -ENOMEM;
+	}
+
 	return 0;
 }
 
@@ -1295,6 +1431,11 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 		  &stdev->mmio_part_cfg->mrpc_comp_hdr);
 	enable_link_state_events(stdev);
 
+	if (stdev->dma_mrpc){
+		iowrite64(stdev->mrpc_output_dma, &stdev->mmio_mrpc->dma_addr);
+		iowrite32(SWITCHTEC_DMA_MRPC_EN_IRQ, &stdev->mmio_mrpc->dma_en);
+	}
+
 	rc = cdev_device_add(&stdev->cdev, &stdev->dev);
 	if (rc)
 		goto err_devadd;
@@ -1306,6 +1447,7 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 err_devadd:
 	stdev_kill(stdev);
 err_put:
+	stdev_release(&stdev->dev);
 	ida_simple_remove(&switchtec_minor_ida, MINOR(stdev->dev.devt));
 	put_device(&stdev->dev);
 	return rc;
@@ -1320,8 +1462,8 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 	cdev_device_del(&stdev->cdev, &stdev->dev);
 	ida_simple_remove(&switchtec_minor_ida, MINOR(stdev->dev.devt));
 	dev_info(&stdev->dev, "unregistered.\n");
-
 	stdev_kill(stdev);
+	stdev_release(&stdev->dev);
 	put_device(&stdev->dev);
 }
 
