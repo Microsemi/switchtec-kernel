@@ -33,6 +33,11 @@ static int max_devices = 16;
 module_param(max_devices, int, 0644);
 MODULE_PARM_DESC(max_devices, "max number of switchtec device instances");
 
+static bool use_dma_mrpc = 1;
+module_param(use_dma_mrpc, bool, 0644);
+MODULE_PARM_DESC(use_dma_mrpc,
+		 "Enable the use of the DMA MRPC feature");
+
 static dev_t switchtec_devt;
 static DEFINE_IDA(switchtec_minor_ida);
 
@@ -1324,6 +1329,9 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	init_pff(stdev);
 
 	pci_set_drvdata(pdev, stdev);
+
+	if (!use_dma_mrpc)
+		return 0;
 
 	if(!(ioread32(&stdev->mmio_mrpc->dma_ver)? true : false))
 		return 0;
