@@ -1257,7 +1257,7 @@ static int switchtec_init_isr(struct switchtec_dev *stdev)
 		return -EFAULT;
 
 	dma_mrpc_irq  = pci_irq_vector(stdev->pdev, dma_mrpc_irq);
-	if (event_irq < 0)
+	if (dma_mrpc_irq < 0)
 		return dma_mrpc_irq;
 
 	rc = devm_request_irq(&stdev->pdev->dev, dma_mrpc_irq,
