@@ -141,6 +141,10 @@ static void mrpc_cmd_submit(struct switchtec_dev *stdev)
 	stuser = list_entry(stdev->mrpc_queue.next, struct switchtec_user,
 			    list);
 
+	if (stdev->dma_mrpc) {
+		stdev->dma_mrpc->status = SWITCHTEC_MRPC_STATUS_INPROGRESS;
+	}
+
 	stuser_set_state(stuser, MRPC_RUNNING);
 	stdev->mrpc_busy = 1;
 	memcpy_toio(&stdev->mmio_mrpc->input_data,
