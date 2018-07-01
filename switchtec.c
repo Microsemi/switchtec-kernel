@@ -143,6 +143,7 @@ static void mrpc_cmd_submit(struct switchtec_dev *stdev)
 
 	if (stdev->dma_mrpc) {
 		stdev->dma_mrpc->status = SWITCHTEC_MRPC_STATUS_INPROGRESS;
+		memset(stdev->dma_mrpc->data, 0xFF, SWITCHTEC_MRPC_PAYLOAD_SIZE);
 	}
 
 	stuser_set_state(stuser, MRPC_RUNNING);
