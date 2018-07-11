@@ -141,6 +141,11 @@ static void mrpc_cmd_submit(struct switchtec_dev *stdev)
 	stuser = list_entry(stdev->mrpc_queue.next, struct switchtec_user,
 			    list);
 
+	if (stdev->dma_mrpc) {
+		stdev->dma_mrpc->status = SWITCHTEC_MRPC_STATUS_INPROGRESS;
+		memset(stdev->dma_mrpc->data, 0xFF, SWITCHTEC_MRPC_PAYLOAD_SIZE);
+	}
+
 	stuser_set_state(stuser, MRPC_RUNNING);
 	stdev->mrpc_busy = 1;
 	memcpy_toio(&stdev->mmio_mrpc->input_data,
@@ -1257,7 +1262,7 @@ static int switchtec_init_isr(struct switchtec_dev *stdev)
 		return -EFAULT;
 
 	dma_mrpc_irq  = pci_irq_vector(stdev->pdev, dma_mrpc_irq);
-	if (event_irq < 0)
+	if (dma_mrpc_irq < 0)
 		return dma_mrpc_irq;
 
 	rc = devm_request_irq(&stdev->pdev->dev, dma_mrpc_irq,
