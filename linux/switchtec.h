@@ -218,7 +218,9 @@ struct part_cfg_regs {
 	u32 mrpc_comp_async_data[5];
 	u32 dyn_binding_hdr;
 	u32 dyn_binding_data[5];
-	uint32_t reserved4[120];
+	u32 intercomm_notify_hdr;
+	u32 intercomm_notify_data[5];
+	uint32_t reserved4[114];
 	struct event customer_events[6];
 	uint32_t reserved5[3];
 } __packed;
