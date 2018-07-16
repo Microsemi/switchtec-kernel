@@ -33,6 +33,7 @@
 #define SWITCHTEC_EVENT_EN_IRQ   BIT(3)
 #define SWITCHTEC_EVENT_FATAL    BIT(4)
 
+#define SWITCHTEC_DMA_MRPC_EN	BIT(0)
 enum {
 	SWITCHTEC_GAS_MRPC_OFFSET       = 0x0000,
 	SWITCHTEC_GAS_TOP_CFG_OFFSET    = 0x1000,
@@ -50,6 +51,10 @@ struct mrpc_regs {
 	u32 cmd;
 	u32 status;
 	u32 ret_value;
+	u32 dma_en;
+	u64 dma_addr;
+	u32 dma_vector;
+	u32 dma_ver;
 } __packed;
 
 enum mrpc_status {
@@ -58,6 +63,12 @@ enum mrpc_status {
 	SWITCHTEC_MRPC_STATUS_ERROR = 0xFF,
 	SWITCHTEC_MRPC_STATUS_INTERRUPTED = 0x100,
 };
+
+struct event {
+	uint32_t hdr;
+	uint32_t data[5];
+};
+
 
 struct sw_event_regs {
 	u64 event_report_ctrl;
@@ -100,9 +111,12 @@ struct sw_event_regs {
 	u32 gpio_interrupt_hdr;
 	u32 gpio_interrupt_data;
 	u32 reserved16[4];
-	u32 gfms_event_hdr;
+	u32 gfms_event_hdr;		//Event specific for PAX
 	u32 gfms_event_data;
 	u32 reserved17[4];
+	uint32_t reserved18[60];
+	struct event customer_events[6];
+	uint32_t reserved19[320];
 } __packed;
 
 enum {
@@ -204,7 +218,11 @@ struct part_cfg_regs {
 	u32 mrpc_comp_async_data[5];
 	u32 dyn_binding_hdr;
 	u32 dyn_binding_data[5];
-	u32 reserved4[159];
+	u32 intercomm_notify_hdr;
+	u32 intercomm_notify_data[5];
+	uint32_t reserved4[114];
+	struct event customer_events[6];
+	uint32_t reserved5[3];
 } __packed;
 
 enum {
@@ -247,7 +265,11 @@ struct ntb_ctrl_regs {
 		u32 win_size;
 		u64 xlate_addr;
 	} bar_entry[6];
-	u32 reserved2[216];
+	struct {
+		u32 win_size;
+		u32 reserved[3];
+	} bar_ext_entry[6];
+	u32 reserved2[192];
 	u32 req_id_table[256];
 	u32 reserved3[512];
 	u64 lut_entry[512];
@@ -341,10 +363,20 @@ struct pff_csr_regs {
 	u32 credit_timeout_data[5];
 	u32 link_state_hdr;
 	u32 link_state_data[5];
-	u32 reserved4[174];
+	uint32_t reserved4[66];
+	struct event customer_events[6];
+	uint32_t reserved5[72];
 } __packed;
 
 struct switchtec_ntb;
+
+struct dma_mrpc_output{
+	u32 status;
+	u32 cmd_id;
+	u32 rtn_code;
+	u32 output_size;
+	u8 data[SWITCHTEC_MRPC_PAYLOAD_SIZE];
+};
 
 struct switchtec_dev {
 	struct pci_dev *pdev;
@@ -352,6 +384,7 @@ struct switchtec_dev {
 	struct device dev;
 	struct cdev cdev;
 	unsigned int event_irq;
+	unsigned int dma_mrpc_irq;
 
 	int partition;
 	int partition_count;
@@ -387,6 +420,9 @@ struct switchtec_dev {
 	u8 link_event_count[SWITCHTEC_MAX_PFF_CSR];
 
 	struct switchtec_ntb *sndev;
+
+	struct dma_mrpc_output *dma_mrpc;
+	dma_addr_t dma_mrpc_dma_addr;
 };
 
 static inline struct switchtec_dev *to_stdev(struct device *dev)
