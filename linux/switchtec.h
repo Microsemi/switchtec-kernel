@@ -65,8 +65,8 @@ enum mrpc_status {
 };
 
 struct event {
-	uint32_t hdr;
-	uint32_t data[5];
+	u32 hdr;
+	u32 data[5];
 };
 
 
@@ -114,9 +114,9 @@ struct sw_event_regs {
 	u32 gfms_event_hdr;		//Event specific for PAX
 	u32 gfms_event_data;
 	u32 reserved17[4];
-	uint32_t reserved18[60];
+	u32 reserved18[60];
 	struct event customer_events[6];
-	uint32_t reserved19[320];
+	u32 reserved19[320];
 } __packed;
 
 enum {
@@ -220,9 +220,9 @@ struct part_cfg_regs {
 	u32 dyn_binding_data[5];
 	u32 intercomm_notify_hdr;
 	u32 intercomm_notify_data[5];
-	uint32_t reserved4[114];
+	u32 reserved4[114];
 	struct event customer_events[6];
-	uint32_t reserved5[3];
+	u32 reserved5[3];
 } __packed;
 
 enum {
@@ -363,9 +363,9 @@ struct pff_csr_regs {
 	u32 credit_timeout_data[5];
 	u32 link_state_hdr;
 	u32 link_state_data[5];
-	uint32_t reserved4[66];
+	u32 reserved4[66];
 	struct event customer_events[6];
-	uint32_t reserved5[72];
+	u32 reserved5[72];
 } __packed;
 
 struct switchtec_ntb;
