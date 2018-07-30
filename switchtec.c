@@ -529,25 +529,25 @@ out:
 		return -EBADMSG;
 }
 
-static unsigned int switchtec_dev_poll(struct file *filp, poll_table *wait)
+static __poll_t switchtec_dev_poll(struct file *filp, poll_table *wait)
 {
 	struct switchtec_user *stuser = filp->private_data;
 	struct switchtec_dev *stdev = stuser->stdev;
-	int ret = 0;
+	__poll_t ret = 0;
 
 	poll_wait(filp, &stuser->comp.wait, wait);
 	poll_wait(filp, &stdev->event_wq, wait);
 
 	if (lock_mutex_and_test_alive(stdev))
-		return POLLIN | POLLRDHUP | POLLOUT | POLLERR | POLLHUP;
+		return EPOLLIN | EPOLLRDHUP | EPOLLOUT | EPOLLERR | EPOLLHUP;
 
 	mutex_unlock(&stdev->mrpc_mutex);
 
 	if (try_wait_for_completion(&stuser->comp))
-		ret |= POLLIN | POLLRDNORM;
+		ret |= EPOLLIN | EPOLLRDNORM;
 
 	if (stuser->event_cnt != atomic_read(&stdev->event_cnt))
-		ret |= POLLPRI | POLLRDBAND;
+		ret |= EPOLLPRI | EPOLLRDBAND;
 
 	return ret;
 }
