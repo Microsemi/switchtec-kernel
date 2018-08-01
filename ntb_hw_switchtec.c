@@ -524,11 +524,16 @@ static int switchtec_ntb_reinit_peer(struct switchtec_ntb *sndev);
 
 static void link_reinit_work(struct work_struct *work)
 {
+	int link_sta;
 	struct switchtec_ntb *sndev;
 
 	sndev = container_of(work, struct switchtec_ntb, link_reinit_work);
 
+	link_sta = sndev->self_shared->link_sta;
+
 	switchtec_ntb_reinit_peer(sndev);
+
+	sndev->self_shared->link_sta = link_sta;
 }
 
 static void switchtec_ntb_check_link(struct switchtec_ntb *sndev,
