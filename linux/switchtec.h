@@ -270,8 +270,8 @@ struct ntb_ctrl_regs {
 		u32 reserved[3];
 	} bar_ext_entry[6];
 	u32 reserved2[192];
-	u32 req_id_table[256];
-	u32 reserved3[512];
+	u32 req_id_table[512];
+	u32 reserved3[256];
 	u64 lut_entry[512];
 } __packed;
 
