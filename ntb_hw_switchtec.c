@@ -754,10 +754,10 @@ static u32 switchtec_ntb_spad_read(struct ntb_dev *ntb, int idx)
 {
 	struct switchtec_ntb *sndev = ntb_sndev(ntb);
 
-	if (idx < 0 || idx >= ARRAY_SIZE(sndev->self_shared->spad))
+	if (!sndev->self_shared)
 		return 0;
 
-	if (!sndev->self_shared)
+	if (idx < 0 || idx >= ARRAY_SIZE(sndev->self_shared->spad))
 		return 0;
 
 	return sndev->self_shared->spad[idx];
@@ -767,11 +767,11 @@ static int switchtec_ntb_spad_write(struct ntb_dev *ntb, int idx, u32 val)
 {
 	struct switchtec_ntb *sndev = ntb_sndev(ntb);
 
-	if (idx < 0 || idx >= ARRAY_SIZE(sndev->self_shared->spad))
-		return -EINVAL;
-
 	if (!sndev->self_shared)
 		return -EIO;
+
+	if (idx < 0 || idx >= ARRAY_SIZE(sndev->self_shared->spad))
+		return -EINVAL;
 
 	sndev->self_shared->spad[idx] = val;
 
@@ -786,10 +786,10 @@ static u32 switchtec_ntb_peer_spad_read(struct ntb_dev *ntb, int pidx,
 	if (pidx != NTB_DEF_PEER_IDX)
 		return -EINVAL;
 
-	if (sidx < 0 || sidx >= ARRAY_SIZE(sndev->peer_shared->spad))
+	if (!sndev->peer_shared)
 		return 0;
 
-	if (!sndev->peer_shared)
+	if (sidx < 0 || sidx >= ARRAY_SIZE(sndev->peer_shared->spad))
 		return 0;
 
 	return ioread32(&sndev->peer_shared->spad[sidx]);
@@ -803,11 +803,11 @@ static int switchtec_ntb_peer_spad_write(struct ntb_dev *ntb, int pidx,
 	if (pidx != NTB_DEF_PEER_IDX)
 		return -EINVAL;
 
-	if (sidx < 0 || sidx >= ARRAY_SIZE(sndev->peer_shared->spad))
-		return -EINVAL;
-
 	if (!sndev->peer_shared)
 		return -EIO;
+
+	if (sidx < 0 || sidx >= ARRAY_SIZE(sndev->peer_shared->spad))
+		return -EINVAL;
 
 	iowrite32(val, &sndev->peer_shared->spad[sidx]);
 
