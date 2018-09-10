@@ -665,8 +665,11 @@ static int ioctl_event_summary(struct switchtec_dev *stdev,
 	struct switchtec_ioctl_event_summary __user *usum)
 {
 	struct switchtec_ioctl_event_summary s = {0};
-	int i;
+	int i, j;
 	u32 reg;
+	struct part_cfg_regs *pcfg;
+	u32 port_cnt;
+	int id, idx = 0;
 
 	s.global = ioread32(&stdev->mmio_sw_event->global_summary);
 	s.part_bitmap = ioread32(&stdev->mmio_sw_event->part_event_bitmap);
@@ -677,13 +680,26 @@ static int ioctl_event_summary(struct switchtec_dev *stdev,
 		s.part[i] = reg;
 	}
 
-	for (i = 0; i < SWITCHTEC_MAX_PFF_CSR; i++) {
-		reg = ioread16(&stdev->mmio_pff_csr[i].vendor_id);
-		if (reg != MICROSEMI_VENDOR_ID)
-			break;
+	for (i = 0; i < stdev->partition_count; i++) {
+		pcfg = &stdev->mmio_part_cfg_all[i];
+		port_cnt = ioread32(&pcfg->port_cnt);
 
-		reg = ioread32(&stdev->mmio_pff_csr[i].pff_event_summary);
-		s.pff[i] = reg;
+		for (j = 0; j < port_cnt; j++) {
+			if (j == 0) {
+				reg =  ioread32(&pcfg->usp_port_mode);
+				if (reg == SWITCHTEC_USP_PORT_MODE_NT)
+					id = ioread32(&pcfg->vep_pff_inst_id);
+				else
+					id = ioread32(&pcfg->usp_pff_inst_id);
+			} else
+				id = ioread32(&pcfg->dsp_pff_inst_id[j-1]);
+			reg = ioread8(&stdev->mmio_top->pff_port[id]);
+			if (reg == 0xff)
+				continue;
+			reg = ioread32(&stdev->mmio_pff_csr[id].pff_event_summary);
+			s.pff[idx].port = reg;
+			s.pff[idx++].inst = id;
+		}
 	}
 
 	if (copy_to_user(usum, &s, sizeof(s)))
