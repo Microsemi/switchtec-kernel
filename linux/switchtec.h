@@ -64,11 +64,19 @@ enum mrpc_status {
 	SWITCHTEC_MRPC_STATUS_INTERRUPTED = 0x100,
 };
 
+struct top_regs {
+	u8 bifur_valid;
+	u8 stack_valid[6];
+	u8 partition_count;
+	u8 partition_id;
+	u8 pff_count;
+	u8 pff_port[255];
+};
+
 struct event {
 	u32 hdr;
 	u32 data[5];
 };
-
 
 struct sw_event_regs {
 	u64 event_report_ctrl;
@@ -397,6 +405,7 @@ struct switchtec_dev {
 
 	void __iomem *mmio;
 	struct mrpc_regs __iomem *mmio_mrpc;
+	struct top_regs __iomem *mmio_top;
 	struct sw_event_regs __iomem *mmio_sw_event;
 	struct sys_info_regs __iomem *mmio_sys_info;
 	struct flash_info_regs __iomem *mmio_flash_info;
