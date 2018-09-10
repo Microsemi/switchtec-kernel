@@ -1351,6 +1351,7 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 		return -ENOMEM;
 
 	stdev->mmio = map - SWITCHTEC_GAS_TOP_CFG_OFFSET;
+	stdev->mmio_top = map;
 	stdev->mmio_sw_event = stdev->mmio + SWITCHTEC_GAS_SW_EVENT_OFFSET;
 	stdev->mmio_sys_info = stdev->mmio + SWITCHTEC_GAS_SYS_INFO_OFFSET;
 	stdev->mmio_flash_info = stdev->mmio + SWITCHTEC_GAS_FLASH_INFO_OFFSET;
