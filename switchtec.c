@@ -1058,6 +1058,7 @@ static void enable_link_state_events(struct switchtec_dev *stdev)
 static void enable_dma_mrpc(struct switchtec_dev *stdev)
 {
 	writeq(stdev->dma_mrpc_dma_addr, &stdev->mmio_mrpc->dma_addr);
+	flush_wc_buf(stdev);
 	iowrite32(SWITCHTEC_DMA_MRPC_EN, &stdev->mmio_mrpc->dma_en);
 }
 
@@ -1067,6 +1068,7 @@ static void stdev_release(struct device *dev)
 
 	if (stdev->dma_mrpc){
 		iowrite32(0, &stdev->mmio_mrpc->dma_en);
+		flush_wc_buf(stdev);
 		writeq(0, &stdev->mmio_mrpc->dma_addr);
 		dma_free_coherent(&stdev->pdev->dev, sizeof(*stdev->dma_mrpc),
 				stdev->dma_mrpc, stdev->dma_mrpc_dma_addr);
