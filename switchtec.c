@@ -136,7 +136,7 @@ static void flush_wc_buf(struct switchtec_dev *stdev)
 
 	mmio_dbmsg = (void __iomem *)stdev->mmio_ntb +
 		SWITCHTEC_NTB_REG_DBMSG_OFFSET;
-	ioread32(&mmio_dbmsg->reserved1[0]);
+	ioread32(&mmio_dbmsg->odb);
 }
 
 static void mrpc_cmd_submit(struct switchtec_dev *stdev)
