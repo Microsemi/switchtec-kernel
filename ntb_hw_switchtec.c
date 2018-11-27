@@ -124,6 +124,8 @@ struct switchtec_ntb {
 	enum ntb_speed link_speed;
 	enum ntb_width link_width;
 	struct work_struct link_reinit_work;
+
+	struct mutex part_op_mutex;
 };
 
 static struct switchtec_ntb *ntb_sndev(struct ntb_dev *ntb)
@@ -144,6 +146,7 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 	int i;
 	u32 ps;
 	int status;
+	int ret = 0;
 
 	switch (op) {
 	case NTB_CTRL_PART_OP_LOCK:
@@ -159,12 +162,15 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 		return -EINVAL;
 	}
 
+	mutex_lock(&sndev->part_op_mutex);
+
 	iowrite32(op, &ctl->partition_op);
 
 	for (i = 0; i < 1000; i++) {
 		if (msleep_interruptible(50) != 0) {
 			iowrite32(NTB_CTRL_PART_OP_RESET, &ctl->partition_op);
-			return -EINTR;
+			ret = -EINTR;
+			goto out;
 		}
 
 		ps = ioread32(&ctl->partition_status) & 0xFFFF;
@@ -174,7 +180,7 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 	}
 
 	if (ps == wait_status)
-		return 0;
+		goto out;
 
 	if (ps == status) {
 		dev_err(&sndev->stdev->dev,
@@ -182,10 +188,15 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 			op_text[op], op,
 			ioread32(&ctl->partition_status));
 
-		return -ETIMEDOUT;
+		ret = -ETIMEDOUT;
+		goto out;
 	}
 
-	return -EIO;
+	ret = -EIO;
+out:
+	mutex_unlock(&sndev->part_op_mutex);
+	return ret;
+
 }
 
 static int switchtec_ntb_send_msg(struct switchtec_ntb *sndev, int idx,
@@ -865,6 +876,7 @@ static int switchtec_ntb_init_sndev(struct switchtec_ntb *sndev)
 	sndev->ntb.ops = &switchtec_ntb_ops;
 
 	INIT_WORK(&sndev->link_reinit_work, link_reinit_work);
+	mutex_init(&sndev->part_op_mutex);
 
 	sndev->self_partition = sndev->stdev->partition;
 
