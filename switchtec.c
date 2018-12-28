@@ -1224,12 +1224,14 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 	irqreturn_t ret = IRQ_NONE;
 	int eid, event_count = 0;
 
-	reg = ioread32(&stdev->mmio_part_cfg->mrpc_comp_hdr);
-	if (reg & SWITCHTEC_EVENT_OCCURRED) {
-		dev_dbg(&stdev->dev, "%s: mrpc comp\n", __func__);
-		ret = IRQ_HANDLED;
-		schedule_work(&stdev->mrpc_work);
-		iowrite32(reg, &stdev->mmio_part_cfg->mrpc_comp_hdr);
+	if (!stdev->dma_mrpc) {
+		reg = ioread32(&stdev->mmio_part_cfg->mrpc_comp_hdr);
+		if (reg & SWITCHTEC_EVENT_OCCURRED) {
+			dev_dbg(&stdev->dev, "%s: mrpc comp\n", __func__);
+			ret = IRQ_HANDLED;
+			schedule_work(&stdev->mrpc_work);
+			iowrite32(reg, &stdev->mmio_part_cfg->mrpc_comp_hdr);
+		}
 	}
 
 	check_link_state_events(stdev);
