@@ -1184,7 +1184,8 @@ static int mask_event(struct switchtec_dev *stdev, int eid, int idx)
 	if (!(hdr & SWITCHTEC_EVENT_OCCURRED && hdr & SWITCHTEC_EVENT_EN_IRQ))
 		return 0;
 
-	if (eid == SWITCHTEC_IOCTL_EVENT_LINK_STATE)
+	if (eid == SWITCHTEC_IOCTL_EVENT_LINK_STATE ||
+	    eid == SWITCHTEC_IOCTL_EVENT_MRPC_COMP)
 		return 0;
 
 	dev_dbg(&stdev->dev, "%s: %d %d %x\n", __func__, eid, idx, hdr);
@@ -1459,7 +1460,7 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	if (!use_dma_mrpc)
 		return 0;
 
-	if(!(ioread32(&stdev->mmio_mrpc->dma_ver)? true : false))
+	if (!ioread32(&stdev->mmio_mrpc->dma_ver))
 		return 0;
 
 	stdev->dma_mrpc = dma_zalloc_coherent(&stdev->pdev->dev, sizeof(*stdev->dma_mrpc),
