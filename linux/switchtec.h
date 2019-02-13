@@ -45,6 +45,11 @@ enum {
 	SWITCHTEC_GAS_PFF_CSR_OFFSET    = 0x134000,
 };
 
+enum switchtec_gen {
+	SWITCHTEC_GEN3,
+	SWITCHTEC_GEN4,
+};
+
 struct mrpc_regs {
 	u8 input_data[SWITCHTEC_MRPC_PAYLOAD_SIZE];
 	u8 output_data[SWITCHTEC_MRPC_PAYLOAD_SIZE];
@@ -382,6 +387,8 @@ struct switchtec_dev {
 	struct pci_dev *pdev;
 	struct device dev;
 	struct cdev cdev;
+
+	enum switchtec_gen gen;
 
 	int partition;
 	int partition_count;
