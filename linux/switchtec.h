@@ -131,10 +131,7 @@ enum {
 	SWITCHTEC_IMG1_RUNNING = 0x07,
 };
 
-struct sys_info_regs {
-	u32 device_id;
-	u32 device_version;
-	u32 firmware_version;
+struct sys_info_regs_gen3 {
 	u32 reserved1;
 	u32 vendor_table_revision;
 	u32 table_format_version;
@@ -149,6 +146,13 @@ struct sys_info_regs {
 	char component_vendor[8];
 	u16 component_id;
 	u8 component_revision;
+} __packed;
+
+struct sys_info_regs {
+	u32 device_id;
+	u32 device_version;
+	u32 firmware_version;
+	struct sys_info_regs_gen3 gen3;
 } __packed;
 
 struct flash_info_regs {
