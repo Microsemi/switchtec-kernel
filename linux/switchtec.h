@@ -125,10 +125,30 @@ struct sw_event_regs {
 } __packed;
 
 enum {
-	SWITCHTEC_CFG0_RUNNING = 0x04,
-	SWITCHTEC_CFG1_RUNNING = 0x05,
-	SWITCHTEC_IMG0_RUNNING = 0x03,
-	SWITCHTEC_IMG1_RUNNING = 0x07,
+	SWITCHTEC_GEN3_CFG0_RUNNING = 0x04,
+	SWITCHTEC_GEN3_CFG1_RUNNING = 0x05,
+	SWITCHTEC_GEN3_IMG0_RUNNING = 0x03,
+	SWITCHTEC_GEN3_IMG1_RUNNING = 0x07,
+};
+
+enum {
+	SWITCHTEC_GEN4_BL2_0_RUNNING = 0x01,
+	SWITCHTEC_GEN4_BL2_1_RUNNING = 0x02,
+	SWITCHTEC_GEN4_MAP0_RUNNING = 0x03,
+	SWITCHTEC_GEN4_MAP1_RUNNING = 0x04,
+	SWITCHTEC_GEN4_CFG0_RUNNING = 0x05,
+	SWITCHTEC_GEN4_CFG1_RUNNING = 0x06,
+	SWITCHTEC_GEN4_IMG0_RUNNING = 0x07,
+	SWITCHTEC_GEN4_IMG1_RUNNING = 0x08,
+};
+
+enum {
+	SWITCHTEC_GEN4_BL2_0_ACTIVE = 0,
+	SWITCHTEC_GEN4_BL2_1_ACTIVE = 1,
+	SWITCHTEC_GEN4_CFG0_ACTIVE = 0,
+	SWITCHTEC_GEN4_CFG1_ACTIVE = 1,
+	SWITCHTEC_GEN4_IMG0_ACTIVE = 0,
+	SWITCHTEC_GEN4_IMG1_ACTIVE = 1,
 };
 
 struct sys_info_regs_gen3 {
@@ -199,31 +219,65 @@ struct sys_info_regs {
 	};
 } __packed;
 
-struct flash_info_regs {
+struct partition_info {
+	u32 address;
+	u32 length;
+};
+
+struct flash_info_regs_gen3 {
 	u32 flash_part_map_upd_idx;
 
-	struct active_partition_info {
+	struct active_partition_info_gen3 {
 		u32 address;
 		u32 build_version;
 		u32 build_string;
 	} active_img;
 
-	struct active_partition_info active_cfg;
-	struct active_partition_info inactive_img;
-	struct active_partition_info inactive_cfg;
+	struct active_partition_info_gen3 active_cfg;
+	struct active_partition_info_gen3 inactive_img;
+	struct active_partition_info_gen3 inactive_cfg;
 
 	u32 flash_length;
 
-	struct partition_info {
-		u32 address;
-		u32 length;
-	} cfg0;
-
+	struct partition_info cfg0;
 	struct partition_info cfg1;
 	struct partition_info img0;
 	struct partition_info img1;
 	struct partition_info nvlog;
 	struct partition_info vendor[8];
+};
+
+struct flash_info_regs_gen4 {
+	u32 flash_address;
+	u32 flash_length;
+
+	struct active_partition_info_gen4 {
+		unsigned char bl2;
+		unsigned char cfg;
+		unsigned char img;
+		unsigned char reserved;
+	} active_flag;
+
+	u32 reserved[3];
+
+	struct partition_info bl1;
+	struct partition_info bl2_0;
+	struct partition_info bl2_1;
+	struct partition_info map0;
+	struct partition_info map1;
+	struct partition_info cfg0;
+	struct partition_info cfg1;
+	struct partition_info img0;
+	struct partition_info img1;
+	struct partition_info nvlog;
+	struct partition_info vendor[8];
+};
+
+struct flash_info_regs {
+	union {
+		struct flash_info_regs_gen3 gen3;
+		struct flash_info_regs_gen4 gen4;
+	};
 };
 
 enum {
