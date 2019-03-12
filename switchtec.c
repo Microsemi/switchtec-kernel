@@ -984,6 +984,22 @@ static int event_ctl(struct switchtec_dev *stdev,
 	return 0;
 }
 
+static int event_supported(struct switchtec_dev *stdev, int eid, int idx)
+{
+	u32 __iomem *hdr_reg;
+	u32 hdr;
+
+	hdr_reg = event_hdr_addr(stdev, eid, idx);
+	if (IS_ERR(hdr_reg))
+		return 0;
+
+	hdr = ioread32(hdr_reg);
+	if (hdr & SWITCHTEC_EVENT_NOT_SUPP)
+		return 0;
+
+	return 1;
+}
+
 static int ioctl_event_ctl(struct switchtec_dev *stdev,
 	struct switchtec_ioctl_event_ctl __user *uctl)
 {
@@ -999,6 +1015,9 @@ static int ioctl_event_ctl(struct switchtec_dev *stdev,
 		return -EINVAL;
 
 	if (ctl.flags & SWITCHTEC_IOCTL_EVENT_FLAG_UNUSED)
+		return -EINVAL;
+
+	if (!event_supported(stdev, ctl.event_id, ctl.index))
 		return -EINVAL;
 
 	if (ctl.index == SWITCHTEC_IOCTL_EVENT_IDX_ALL) {
@@ -1320,6 +1339,9 @@ static int mask_event(struct switchtec_dev *stdev, int eid, int idx)
 
 	hdr_reg = event_regs[eid].map_reg(stdev, off, idx);
 	hdr = ioread32(hdr_reg);
+
+	if (hdr & SWITCHTEC_EVENT_NOT_SUPP)
+		return 0;
 
 	if (!(hdr & SWITCHTEC_EVENT_OCCURRED && hdr & SWITCHTEC_EVENT_EN_IRQ))
 		return 0;
