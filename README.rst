@@ -79,6 +79,13 @@ The following IOCTLs are also supported by the device:
   and Switchtec Logic Port ID and Partition number (which is more
   user friendly).
 
+Management & NT Endpoint configuration
+======================================
+
+For improving MRPC efficiency by leveraging write combining, it requires
+the following configuration setting:
+
+* BAR Prefetchable
 
 Non-Transparent Bridge (NTB) Driver
 ===================================
