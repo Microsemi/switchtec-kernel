@@ -685,11 +685,7 @@ static int ioctl_event_summary(struct switchtec_dev *stdev,
 		s->part[i] = reg;
 	}
 
-	for (i = 0; i < SWITCHTEC_MAX_PFF_CSR; i++) {
-		reg = ioread16(&stdev->mmio_pff_csr[i].vendor_id);
-		if (reg != MICROSEMI_VENDOR_ID)
-			break;
-
+	for (i = 0; i < stdev->pff_csr_count; i++) {
 		reg = ioread32(&stdev->mmio_pff_csr[i].pff_event_summary);
 		s->pff[i] = reg;
 	}
@@ -1323,16 +1319,16 @@ static void init_pff(struct switchtec_dev *stdev)
 	stdev->pff_csr_count = i;
 
 	reg = ioread32(&pcfg->usp_pff_inst_id);
-	if (reg < SWITCHTEC_MAX_PFF_CSR)
+	if (reg < stdev->pff_csr_count)
 		stdev->pff_local[reg] = 1;
 
 	reg = ioread32(&pcfg->vep_pff_inst_id);
-	if (reg < SWITCHTEC_MAX_PFF_CSR)
+	if (reg < stdev->pff_csr_count)
 		stdev->pff_local[reg] = 1;
 
 	for (i = 0; i < ARRAY_SIZE(pcfg->dsp_pff_inst_id); i++) {
 		reg = ioread32(&pcfg->dsp_pff_inst_id[i]);
-		if (reg < SWITCHTEC_MAX_PFF_CSR)
+		if (reg < stdev->pff_csr_count)
 			stdev->pff_local[reg] = 1;
 	}
 }
