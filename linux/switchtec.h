@@ -453,7 +453,8 @@ struct pff_csr_regs {
 	u32 dpc_data[5];
 	u32 cts_hdr;
 	u32 cts_data[5];
-	u32 reserved3[6];
+	u32 uec_hdr;
+	u32 uec_data[5];
 	u32 hotplug_hdr;
 	u32 hotplug_data[5];
 	u32 ier_hdr;
@@ -470,9 +471,9 @@ struct pff_csr_regs {
 	u32 credit_timeout_data[5];
 	u32 link_state_hdr;
 	u32 link_state_data[5];
-	u32 reserved4[66];
+	u32 reserved3[66];
 	struct event customer_events[6];
-	u32 reserved5[72];
+	u32 reserved4[72];
 } __packed;
 
 struct switchtec_ntb;
