@@ -699,10 +699,15 @@ static u64 switchtec_ntb_db_read_mask(struct ntb_dev *ntb)
 
 static int switchtec_ntb_peer_db_addr(struct ntb_dev *ntb,
 				      phys_addr_t *db_addr,
-				      resource_size_t *db_size)
+				      resource_size_t *db_size,
+				      u64 *db_data,
+				      int db_bit)
 {
 	struct switchtec_ntb *sndev = ntb_sndev(ntb);
 	unsigned long offset;
+
+	if (unlikely(db_bit >= BITS_PER_LONG_LONG))
+		return -EINVAL;
 
 	offset = (unsigned long)sndev->mmio_peer_dbmsg->odb -
 		(unsigned long)sndev->stdev->mmio;
@@ -713,6 +718,8 @@ static int switchtec_ntb_peer_db_addr(struct ntb_dev *ntb,
 		*db_addr = pci_resource_start(ntb->pdev, 0) + offset;
 	if (db_size)
 		*db_size = sizeof(u32);
+	if (db_data)
+		*db_data = BIT_ULL(db_bit) << sndev->db_peer_shift;
 
 	return 0;
 }
@@ -1318,10 +1325,10 @@ static int switchtec_ntb_init_shared_mw(struct switchtec_ntb *sndev)
 	int rc;
 
 	sndev->nr_rsvd_luts++;
-	sndev->self_shared = dma_zalloc_coherent(&sndev->stdev->pdev->dev,
-						 LUT_SIZE,
-						 &sndev->self_shared_dma,
-						 GFP_KERNEL);
+	sndev->self_shared = dma_alloc_coherent(&sndev->stdev->pdev->dev,
+						LUT_SIZE,
+						&sndev->self_shared_dma,
+						GFP_KERNEL);
 	if (!sndev->self_shared) {
 		dev_err(&sndev->stdev->dev,
 			"unable to allocate memory for shared mw\n");
