@@ -1160,7 +1160,6 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 		return 0;
 
 	dev_info(&sndev->stdev->dev, "Using crosslink configuration\n");
-	sndev->ntb.topo = NTB_TOPO_CROSSLINK;
 
 	bar_cnt = crosslink_enum_partition(sndev, bar_addrs);
 	if (bar_cnt < sndev->nr_direct_mw + 1) {
