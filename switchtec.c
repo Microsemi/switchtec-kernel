@@ -24,6 +24,7 @@
 #include <linux/wait.h>
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/nospec.h>
+#include <linux/aer.h>
 
 #include "version.h"
 MODULE_DESCRIPTION("Microsemi Switchtec(tm) PCIe Management Driver");
@@ -1597,6 +1598,8 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 		goto err_devadd;
 
 	dev_info(&stdev->dev, "Management device registered.\n");
+	pci_enable_pcie_error_reporting(pdev);
+	pci_save_state(pdev);
 
 	return 0;
 
@@ -1620,6 +1623,111 @@ static void switchtec_pci_remove(struct pci_dev *pdev)
 	stdev_kill(stdev);
 	put_device(&stdev->dev);
 }
+
+static void switchtec_pci_disable(struct pci_dev *pdev)
+{
+	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
+
+	if (pci_is_enabled(pdev)) {
+		pci_disable_pcie_error_reporting(pdev);
+		pci_disable_device(pdev);
+	}
+
+	stdev_kill(stdev);
+}
+
+static pci_ers_result_t switchtec_pci_error_detected(struct pci_dev *pdev,
+						pci_channel_state_t state)
+{
+	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
+
+	/*
+	 * A frozen channel requires a reset. When detected, this method
+	 * will disable the device. The device will be restarted
+	 * after the slot reset through driver's slot_reset callback.
+	 */
+	switch (state) {
+	case pci_channel_io_normal:
+		return PCI_ERS_RESULT_CAN_RECOVER;
+	case pci_channel_io_frozen:
+		switchtec_pci_disable(pdev);
+		dev_info(&stdev->dev, "frozen state error detected - reset needed\n");
+		return PCI_ERS_RESULT_NEED_RESET;
+	case pci_channel_io_perm_failure:
+		switchtec_pci_disable(pdev);
+		dev_info(&stdev->dev, "failure state error detected - request disconnect\n");
+		return PCI_ERS_RESULT_DISCONNECT;
+	}
+	return PCI_ERS_RESULT_NEED_RESET;
+}
+
+static pci_ers_result_t switchtec_pci_slot_reset(struct pci_dev *pdev)
+{
+	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
+	int rc;
+	unsigned long res_start, res_len;
+
+	dev_info(&stdev->dev, "slot_reset.\n");
+
+	pci_restore_state(pdev);
+
+	/*
+	 *  First, release PCI resources and memory regions
+	 */
+	if (stdev->dma_mrpc){
+		iowrite32(0, &stdev->mmio_mrpc->dma_en);
+		flush_wc_buf(stdev);
+		writeq(0, &stdev->mmio_mrpc->dma_addr);
+		dma_free_coherent(&stdev->pdev->dev, sizeof(*stdev->dma_mrpc),
+				stdev->dma_mrpc, stdev->dma_mrpc_dma_addr);
+	}
+
+	res_start = pci_resource_start(pdev, 0);
+	res_len = pci_resource_len(pdev, 0);
+
+	devm_release_mem_region(&pdev->dev, res_start, res_len);
+
+	/*
+	 *  Second, reinitialize PCI resources, remap memory regions and reenable events.
+	 */
+	rc = switchtec_init_pci(stdev, pdev);
+	if (rc) {
+		dev_err(&stdev->dev, "failed to reinitialize pci.\n");
+		goto err_ret;
+	}
+
+	iowrite32(SWITCHTEC_EVENT_CLEAR |
+		  SWITCHTEC_EVENT_EN_IRQ,
+		  &stdev->mmio_part_cfg->mrpc_comp_hdr);
+	enable_link_state_events(stdev);
+
+	if (stdev->dma_mrpc)
+		enable_dma_mrpc(stdev);
+
+	stdev->alive = true;
+	stdev->mrpc_busy = 0;
+
+	pci_enable_pcie_error_reporting(pdev);
+	pci_save_state(pdev);
+
+	return PCI_ERS_RESULT_RECOVERED;
+err_ret:
+	return PCI_ERS_RESULT_DISCONNECT;
+}
+
+static void switchtec_pci_error_resume(struct pci_dev *pdev)
+{
+	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
+
+	dev_info(&stdev->dev, "resume.\n");
+	pci_cleanup_aer_uncorrect_error_status(pdev);
+}
+
+static const struct pci_error_handlers switchtec_pci_err_handler = {
+	.error_detected	= switchtec_pci_error_detected,
+	.slot_reset	= switchtec_pci_slot_reset,
+	.resume		= switchtec_pci_error_resume,
+};
 
 #define SWITCHTEC_PCI_DEVICE(device_id, gen) \
 	{ \
@@ -1699,6 +1807,7 @@ static struct pci_driver switchtec_pci_driver = {
 	.id_table	= switchtec_pci_tbl,
 	.probe		= switchtec_pci_probe,
 	.remove		= switchtec_pci_remove,
+	.err_handler	= &switchtec_pci_err_handler,
 };
 
 static int __init switchtec_init(void)
