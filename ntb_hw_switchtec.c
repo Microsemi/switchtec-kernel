@@ -457,7 +457,15 @@ static void switchtec_ntb_part_link_speed(struct switchtec_ntb *sndev,
 {
 	struct switchtec_dev *stdev = sndev->stdev;
 
-	u32 pff = ioread32(&stdev->mmio_part_cfg[partition].vep_pff_inst_id);
+	u32 pff = ioread32(&stdev->mmio_part_cfg_all[partition].vep_pff_inst_id);
+	if(pff == 0xFFFFFFFF)
+	{
+		dev_warn(&sndev->stdev->dev,
+			"ntb_part_link_speed - invalid pff, setting speed/width to 0");
+		*speed=0;
+		*width=0;
+		return;
+	}
 	u32 linksta = ioread32(&stdev->mmio_pff_csr[pff].pci_cap_region[13]);
 
 	if (speed)
