@@ -705,6 +705,26 @@ static int flash_part_info_gen4(struct switchtec_dev *stdev,
 	struct active_partition_info_gen4 __iomem *af = &fi->active_flag;
 
 	switch (info->flash_partition) {
+	case SWITCHTEC_IOCTL_PART_MAP_0:
+		set_fw_info_part(info, &fi->map0);
+		break;
+	case SWITCHTEC_IOCTL_PART_MAP_1:
+		set_fw_info_part(info, &fi->map1);
+		break;
+	case SWITCHTEC_IOCTL_PART_KEY_0:
+		set_fw_info_part(info, &fi->key0);
+		if (ioread8(&af->key) == SWITCHTEC_GEN4_KEY0_ACTIVE)
+			info->active |= SWITCHTEC_IOCTL_PART_ACTIVE;
+		if (ioread16(&si->key_running) == SWITCHTEC_GEN4_KEY0_RUNNING)
+			info->active |= SWITCHTEC_IOCTL_PART_RUNNING;
+		break;
+	case SWITCHTEC_IOCTL_PART_KEY_1:
+		set_fw_info_part(info, &fi->key1);
+		if (ioread8(&af->key) == SWITCHTEC_GEN4_KEY1_ACTIVE)
+			info->active |= SWITCHTEC_IOCTL_PART_ACTIVE;
+		if (ioread16(&si->key_running) == SWITCHTEC_GEN4_KEY1_RUNNING)
+			info->active |= SWITCHTEC_IOCTL_PART_RUNNING;
+		break;
 	case SWITCHTEC_IOCTL_PART_BL2_0:
 		set_fw_info_part(info, &fi->bl2_0);
 		if (ioread8(&af->bl2) == SWITCHTEC_GEN4_BL2_0_ACTIVE)
