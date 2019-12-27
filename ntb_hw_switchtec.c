@@ -343,7 +343,7 @@ static int switchtec_ntb_mw_set_trans(struct ntb_dev *ntb, int pidx, int widx,
 	if (rc)
 		return rc;
 
-	if (addr == 0 || size == 0) {
+	if (size == 0) {
 		if (widx < nr_direct_mw)
 			switchtec_ntb_mw_clr_direct(sndev, widx);
 		else
@@ -456,9 +456,19 @@ static void switchtec_ntb_part_link_speed(struct switchtec_ntb *sndev,
 					  enum ntb_width *width)
 {
 	struct switchtec_dev *stdev = sndev->stdev;
+	u32 pff;
+	u32 linksta;
 
-	u32 pff = ioread32(&stdev->mmio_part_cfg[partition].vep_pff_inst_id);
-	u32 linksta = ioread32(&stdev->mmio_pff_csr[pff].pci_cap_region[13]);
+	pff = ioread32(&stdev->mmio_part_cfg_all[partition].vep_pff_inst_id);
+	if (pff == 0xFFFFFFFF) {
+		dev_warn(&sndev->stdev->dev,
+			 "Invalid pff, setting speed/width to 0");
+		*speed = 0;
+		*width = 0;
+		return;
+	}
+
+	linksta = ioread32(&stdev->mmio_pff_csr[pff].pci_cap_region[13]);
 
 	if (speed)
 		*speed = (linksta >> 16) & 0xF;
@@ -888,6 +898,7 @@ static int switchtec_ntb_init_sndev(struct switchtec_ntb *sndev)
 	tpart_vec |= ioread32(&sndev->mmio_ntb->ntp_info[self].target_part_low);
 
 	part_map = ioread64(&sndev->mmio_ntb->ep_map);
+	tpart_vec &= part_map;
 	part_map &= ~(1 << sndev->self_partition);
 
 	if (!tpart_vec) {
@@ -912,7 +923,7 @@ static int switchtec_ntb_init_sndev(struct switchtec_ntb *sndev)
 		}
 
 		sndev->peer_partition = __ffs64(tpart_vec);
-		if (!(part_map & (1 << sndev->peer_partition))) {
+		if (!(part_map & (1ULL << sndev->peer_partition))) {
 			dev_err(&sndev->stdev->dev,
 				"ntb target partition is not NT partition\n");
 			return -ENODEV;
