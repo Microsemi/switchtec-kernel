@@ -138,17 +138,21 @@ enum {
 };
 
 enum {
-	SWITCHTEC_GEN4_BL2_0_RUNNING = 0x01,
-	SWITCHTEC_GEN4_BL2_1_RUNNING = 0x02,
-	SWITCHTEC_GEN4_MAP0_RUNNING = 0x03,
-	SWITCHTEC_GEN4_MAP1_RUNNING = 0x04,
-	SWITCHTEC_GEN4_CFG0_RUNNING = 0x05,
-	SWITCHTEC_GEN4_CFG1_RUNNING = 0x06,
-	SWITCHTEC_GEN4_IMG0_RUNNING = 0x07,
-	SWITCHTEC_GEN4_IMG1_RUNNING = 0x08,
+	SWITCHTEC_GEN4_MAP0_RUNNING = 0x00,
+	SWITCHTEC_GEN4_MAP1_RUNNING = 0x01,
+	SWITCHTEC_GEN4_KEY0_RUNNING = 0x02,
+	SWITCHTEC_GEN4_KEY1_RUNNING = 0x03,
+	SWITCHTEC_GEN4_BL2_0_RUNNING = 0x04,
+	SWITCHTEC_GEN4_BL2_1_RUNNING = 0x05,
+	SWITCHTEC_GEN4_CFG0_RUNNING = 0x06,
+	SWITCHTEC_GEN4_CFG1_RUNNING = 0x07,
+	SWITCHTEC_GEN4_IMG0_RUNNING = 0x08,
+	SWITCHTEC_GEN4_IMG1_RUNNING = 0x09,
 };
 
 enum {
+	SWITCHTEC_GEN4_KEY0_ACTIVE = 0,
+	SWITCHTEC_GEN4_KEY1_ACTIVE = 1,
 	SWITCHTEC_GEN4_BL2_0_ACTIVE = 0,
 	SWITCHTEC_GEN4_BL2_1_ACTIVE = 1,
 	SWITCHTEC_GEN4_CFG0_ACTIVE = 0,
@@ -187,32 +191,32 @@ struct sys_info_regs_gen4 {
 	u8 mrpc_inband_ver;
 	u32 reserved3[7];
 	u32 fw_update_tmo;
-	u32 table_version_cfg;
-	u32 table_version_img;
+	u32 xml_version_cfg;
+	u32 xml_version_img;
 	u32 partition_id;
 	u16 bl2_running;
 	u16 cfg_running;
 	u16 img_running;
-	u16 reserved4;
-	u32 reserved5[43];
+	u16 key_running;
+	u32 reserved4[43];
 	u32 vendor_seeprom_twi;
 	u32 vendor_table_revision;
 	u32 vendor_specific_info[2];
 	u16 p2p_vendor_id;
 	u16 p2p_device_id;
 	u8 p2p_revision_id;
-	u8 reserved6[3];
+	u8 reserved5[3];
 	u32 p2p_class_id;
 	u16 subsystem_vendor_id;
 	u16 subsystem_id;
 	u32 p2p_serial_number[2];
 	u8 mac_addr[6];
-	u8 reserved7[2];
-	u32 reserved8[3];
+	u8 reserved6[2];
+	u32 reserved7[3];
 	char vendor_id[8];
 	char product_id[24];
 	char  product_revision[2];
-	u16 reserved9;
+	u16 reserved8;
 } __packed;
 
 struct sys_info_regs {
@@ -261,16 +265,17 @@ struct flash_info_regs_gen4 {
 		unsigned char bl2;
 		unsigned char cfg;
 		unsigned char img;
-		unsigned char reserved;
+		unsigned char key;
 	} active_flag;
 
 	u32 reserved[3];
 
-	struct partition_info bl1;
-	struct partition_info bl2_0;
-	struct partition_info bl2_1;
 	struct partition_info map0;
 	struct partition_info map1;
+	struct partition_info key0;
+	struct partition_info key1;
+	struct partition_info bl2_0;
+	struct partition_info bl2_1;
 	struct partition_info cfg0;
 	struct partition_info cfg1;
 	struct partition_info img0;
