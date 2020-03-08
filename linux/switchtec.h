@@ -301,7 +301,8 @@ struct ntb_info_regs {
 	u8  partition_count;
 	u8  partition_id;
 	u16 reserved1;
-	u64 ep_map;
+	u32 ep_map_low;
+	u32 ep_map_high;
 	u16 requester_id;
 	u16 reserved2;
 	u32 reserved3[4];
