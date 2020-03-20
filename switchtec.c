@@ -208,13 +208,14 @@ static void mrpc_complete_cmd(struct switchtec_dev *stdev)
 	stuser_set_state(stuser, MRPC_DONE);
 	stuser->return_code = 0;
 
-	if (stuser->status != SWITCHTEC_MRPC_STATUS_DONE)
-		goto out;
-
 	if (stdev->dma_mrpc)
 		stuser->return_code = stdev->dma_mrpc->rtn_code;
 	else
 		stuser->return_code = ioread32(&stdev->mmio_mrpc->ret_value);
+
+	if (stuser->status != SWITCHTEC_MRPC_STATUS_DONE)
+		goto out;
+
 	if (stuser->return_code != 0)
 		goto out;
 
@@ -572,6 +573,8 @@ out:
 		return size;
 	else if (stuser->status == SWITCHTEC_MRPC_STATUS_INTERRUPTED)
 		return -ENXIO;
+	else if (stuser->status == SWITCHTEC_MRPC_STATUS_ERROR)
+		return -EIO;
 	else
 		return -EBADMSG;
 }
