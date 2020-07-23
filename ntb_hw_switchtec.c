@@ -992,19 +992,80 @@ static int config_rsvd_lut_win(struct switchtec_ntb *sndev,
 	return 0;
 }
 
-static int config_req_id_table(struct switchtec_ntb *sndev,
-			       struct ntb_ctrl_regs __iomem *mmio_ctrl,
-			       int *req_ids, int count)
+static int add_req_id(struct switchtec_ntb *sndev,
+		      struct ntb_ctrl_regs __iomem *mmio_ctrl, int req_id)
+{
+	int i, rc = 0;
+	int slot = -1;
+	u32 error;
+	int table_size;
+	u32 proxy_id = 0;
+	bool added = true;
+
+	table_size = ioread16(&mmio_ctrl->req_id_table_size);
+
+	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
+				   NTB_CTRL_PART_OP_LOCK,
+				   NTB_CTRL_PART_STATUS_LOCKED);
+	if (rc)
+		return rc;
+
+	iowrite32(NTB_PART_CTRL_ID_PROT_DIS, &mmio_ctrl->partition_ctrl);
+
+	for (i = 0; i < table_size; i++) {
+		proxy_id = ioread32(&mmio_ctrl->req_id_table[i]);
+
+		if (!(proxy_id & NTB_CTRL_REQ_ID_EN) && slot == -1)
+			slot = i;
+
+		if (proxy_id & NTB_CTRL_REQ_ID_EN &&
+		    proxy_id >> 16 == req_id) {
+			goto unlock_exit;
+		}
+	}
+
+	if (slot == -1) {
+		dev_err(&sndev->stdev->dev,
+			"Not enough requester IDs available.\n");
+		added = false;
+	} else {
+		iowrite32(req_id << 16 | NTB_CTRL_REQ_ID_EN,
+			  &mmio_ctrl->req_id_table[slot]);
+
+		dev_dbg(&sndev->stdev->dev,
+			"Requester ID %02X:%02X.%X -> BB:%02X.%X\n",
+			req_id >> 8, (req_id >> 3) & 0x1F,
+			req_id & 0x7, (proxy_id >> 4) & 0x1F,
+			(proxy_id >> 1) & 0x7);
+		added = true;
+	}
+
+unlock_exit:
+	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
+				   NTB_CTRL_PART_OP_CFG,
+				   NTB_CTRL_PART_STATUS_NORMAL);
+
+	if (rc == -EIO) {
+		error = ioread32(&mmio_ctrl->req_id_error);
+		dev_err(&sndev->stdev->dev,
+			"Error setting up the requester ID table: %08x\n",
+			error);
+	}
+
+	if (!added)
+		return -EFAULT;
+
+	return 0;
+}
+
+static int clr_req_ids(struct switchtec_ntb *sndev,
+		       struct ntb_ctrl_regs __iomem *mmio_ctrl)
 {
 	int i, rc = 0;
 	u32 error;
-	u32 proxy_id;
+	int table_size;
 
-	if (ioread16(&mmio_ctrl->req_id_table_size) < count) {
-		dev_err(&sndev->stdev->dev,
-			"Not enough requester IDs available.\n");
-		return -EFAULT;
-	}
+	table_size = ioread16(&mmio_ctrl->req_id_table_size);
 
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
 				   NTB_CTRL_PART_OP_LOCK,
@@ -1015,17 +1076,8 @@ static int config_req_id_table(struct switchtec_ntb *sndev,
 	iowrite32(NTB_PART_CTRL_ID_PROT_DIS,
 		  &mmio_ctrl->partition_ctrl);
 
-	for (i = 0; i < count; i++) {
-		iowrite32(req_ids[i] << 16 | NTB_CTRL_REQ_ID_EN,
-			  &mmio_ctrl->req_id_table[i]);
-
-		proxy_id = ioread32(&mmio_ctrl->req_id_table[i]);
-		dev_dbg(&sndev->stdev->dev,
-			"Requester ID %02X:%02X.%X -> BB:%02X.%X\n",
-			req_ids[i] >> 8, (req_ids[i] >> 3) & 0x1F,
-			req_ids[i] & 0x7, (proxy_id >> 4) & 0x1F,
-			(proxy_id >> 1) & 0x7);
-	}
+	for (i = 0; i < table_size; i++)
+		iowrite32(0, &mmio_ctrl->req_id_table[i]);
 
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
 				   NTB_CTRL_PART_OP_CFG,
@@ -1110,20 +1162,28 @@ static int crosslink_setup_mws(struct switchtec_ntb *sndev, int ntb_lut_idx,
 static int crosslink_setup_req_ids(struct switchtec_ntb *sndev,
 	struct ntb_ctrl_regs __iomem *mmio_ctrl)
 {
-	int req_ids[16];
 	int i;
 	u32 proxy_id;
+	int table_size;
+	int rc;
 
-	for (i = 0; i < ARRAY_SIZE(req_ids); i++) {
+	table_size = ioread16(&mmio_ctrl->req_id_table_size);
+
+	clr_req_ids(sndev, mmio_ctrl);
+
+	for (i = 0; i < table_size; i++) {
 		proxy_id = ioread32(&sndev->mmio_self_ctrl->req_id_table[i]);
 
 		if (!(proxy_id & NTB_CTRL_REQ_ID_EN))
-			break;
+			continue;
 
-		req_ids[i] = ((proxy_id >> 1) & 0xFF);
+		proxy_id = ((proxy_id >> 1) & 0xFF);
+		rc = add_req_id(sndev, mmio_ctrl, proxy_id);
+		if (rc)
+			return rc;
 	}
 
-	return config_req_id_table(sndev, mmio_ctrl, req_ids, i);
+	return 0;
 }
 
 /*
@@ -1324,20 +1384,21 @@ static void switchtec_ntb_init_msgs(struct switchtec_ntb *sndev)
 static int
 switchtec_ntb_init_req_id_table(struct switchtec_ntb *sndev)
 {
-	int req_ids[2];
+	int req_id;
+	int rc;
 
 	/*
 	 * Root Complex Requester ID (which is 0:00.0)
 	 */
-	req_ids[0] = 0;
+	rc = add_req_id(sndev, sndev->mmio_self_ctrl, 0);
+	if (rc)
+		return rc;
 
 	/*
 	 * Host Bridge Requester ID (as read from the mmap address)
 	 */
-	req_ids[1] = ioread16(&sndev->mmio_ntb->requester_id);
-
-	return config_req_id_table(sndev, sndev->mmio_self_ctrl, req_ids,
-				   ARRAY_SIZE(req_ids));
+	req_id = ioread16(&sndev->mmio_ntb->requester_id);
+	return add_req_id(sndev, sndev->mmio_self_ctrl, req_id);
 }
 
 static void switchtec_ntb_init_shared(struct switchtec_ntb *sndev)
