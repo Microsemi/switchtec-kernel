@@ -1058,8 +1058,8 @@ unlock_exit:
 	return 0;
 }
 
-int del_req_id(struct switchtec_ntb *sndev,
-	       struct ntb_ctrl_regs __iomem *mmio_ctrl, int req_id)
+static int del_req_id(struct switchtec_ntb *sndev,
+		      struct ntb_ctrl_regs __iomem *mmio_ctrl, int req_id)
 {
 	int i, rc = 0;
 	u32 error;
@@ -1636,6 +1636,102 @@ static int switchtec_ntb_reinit_peer(struct switchtec_ntb *sndev)
 	return rc;
 }
 
+static ssize_t add_requester_id_store(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	struct ntb_dev *ntb = container_of(dev, struct ntb_dev, dev);
+	struct switchtec_ntb *sndev = ntb_sndev(ntb);
+	int req_id;
+	int bus, device, func;
+	int rc;
+
+	if (sscanf(buf, "%x:%x.%x", &bus, &device, &func) != 3)
+		return -EINVAL;
+
+	req_id = PCI_DEVID(bus, PCI_DEVFN(device, func));
+	rc = add_req_id(sndev, sndev->mmio_self_ctrl, req_id);
+	if (rc)
+		return rc;
+
+	if (crosslink_is_enabled(sndev)) {
+		rc = crosslink_setup_req_ids(sndev, sndev->mmio_peer_ctrl);
+		if (rc)
+			return rc;
+	}
+
+	return count;
+}
+static DEVICE_ATTR_WO(add_requester_id);
+
+static ssize_t del_requester_id_store(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	struct ntb_dev *ntb = container_of(dev, struct ntb_dev, dev);
+	struct switchtec_ntb *sndev = ntb_sndev(ntb);
+	int req_id;
+	int bus, device, func;
+	int rc;
+
+	if (sscanf(buf, "%x:%x.%x", &bus, &device, &func) != 3)
+		return -EINVAL;
+
+	req_id = PCI_DEVID(bus, PCI_DEVFN(device, func));
+	rc = del_req_id(sndev, sndev->mmio_self_ctrl, req_id);
+	if (rc)
+		return rc;
+
+	if (crosslink_is_enabled(sndev)) {
+		rc = crosslink_setup_req_ids(sndev, sndev->mmio_peer_ctrl);
+		if (rc)
+			return rc;
+	}
+
+	return count;
+}
+static DEVICE_ATTR_WO(del_requester_id);
+
+static ssize_t requester_ids_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	struct ntb_dev *ntb = container_of(dev, struct ntb_dev, dev);
+	struct switchtec_ntb *sndev = ntb_sndev(ntb);
+	int i;
+	int table_size;
+	char req_id_str[32];
+	u32 req_id;
+	ssize_t n = 0;
+
+	table_size = ioread16(&sndev->mmio_self_ctrl->req_id_table_size);
+
+	for (i = 0; i < table_size; i++) {
+		req_id = ioread32(&sndev->mmio_self_ctrl->req_id_table[i]);
+
+		if (req_id & NTB_CTRL_REQ_ID_EN) {
+			req_id >>= 16;
+			n += sprintf(req_id_str, "%d\t%02X:%02X.%X\n", i,
+				     PCI_BUS_NUM(req_id), PCI_SLOT(req_id),
+				     PCI_FUNC(req_id));
+			strcat(buf, req_id_str);
+		}
+	}
+
+	return n;
+}
+static DEVICE_ATTR_RO(requester_ids);
+
+static struct attribute *switchtec_ntb_device_attrs[] = {
+	&dev_attr_add_requester_id.attr,
+	&dev_attr_del_requester_id.attr,
+	&dev_attr_requester_ids.attr,
+	NULL,
+};
+
+static const struct attribute_group switchtec_ntb_device_group = {
+	.attrs = switchtec_ntb_device_attrs,
+};
+
 static int switchtec_ntb_add(struct device *dev,
 			     struct class_interface *class_intf)
 {
@@ -1689,6 +1785,11 @@ static int switchtec_ntb_add(struct device *dev,
 	if (rc)
 		goto deinit_and_exit;
 
+	rc = sysfs_create_group(&sndev->ntb.dev.kobj,
+				&switchtec_ntb_device_group);
+	if (rc)
+		goto deinit_and_exit;
+
 	stdev->sndev = sndev;
 	stdev->link_notifier = switchtec_ntb_link_notification;
 	dev_info(dev, "NTB device registered\n");
@@ -1718,6 +1819,7 @@ static void switchtec_ntb_remove(struct device *dev,
 
 	stdev->link_notifier = NULL;
 	stdev->sndev = NULL;
+	sysfs_remove_group(&sndev->ntb.dev.kobj, &switchtec_ntb_device_group);
 	ntb_unregister_device(&sndev->ntb);
 	switchtec_ntb_deinit_db_msg_irq(sndev);
 	switchtec_ntb_deinit_shared_mw(sndev);
