@@ -1058,6 +1058,63 @@ unlock_exit:
 	return 0;
 }
 
+int del_req_id(struct switchtec_ntb *sndev,
+	       struct ntb_ctrl_regs __iomem *mmio_ctrl, int req_id)
+{
+	int i, rc = 0;
+	u32 error;
+	int table_size;
+	u32 rid;
+	bool deleted = true;
+
+	table_size = ioread16(&mmio_ctrl->req_id_table_size);
+
+	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
+				   NTB_CTRL_PART_OP_LOCK,
+				   NTB_CTRL_PART_STATUS_LOCKED);
+	if (rc)
+		return rc;
+
+	iowrite32(NTB_PART_CTRL_ID_PROT_DIS, &mmio_ctrl->partition_ctrl);
+
+	for (i = 0; i < table_size; i++) {
+		rid = ioread32(&mmio_ctrl->req_id_table[i]);
+
+		if (!(rid & NTB_CTRL_REQ_ID_EN))
+			continue;
+
+		rid >>= 16;
+		if (rid == req_id) {
+			iowrite32(0, &mmio_ctrl->req_id_table[i]);
+			break;
+		}
+	}
+
+	if (i == table_size) {
+		dev_err(&sndev->stdev->dev,
+			"Requester ID %02X:%02X.%X not in the table.\n",
+			PCI_BUS_NUM(req_id), PCI_SLOT(req_id),
+			PCI_FUNC(req_id));
+		deleted = false;
+	}
+
+	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
+				   NTB_CTRL_PART_OP_CFG,
+				   NTB_CTRL_PART_STATUS_NORMAL);
+
+	if (rc == -EIO) {
+		error = ioread32(&mmio_ctrl->req_id_error);
+		dev_err(&sndev->stdev->dev,
+			"Error setting up the requester ID table: %08x\n",
+			error);
+	}
+
+	if (!deleted)
+		return -ENXIO;
+
+	return 0;
+}
+
 static int clr_req_ids(struct switchtec_ntb *sndev,
 		       struct ntb_ctrl_regs __iomem *mmio_ctrl)
 {
