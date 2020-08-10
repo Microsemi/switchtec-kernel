@@ -460,7 +460,8 @@ static void switchtec_ntb_part_link_speed(struct switchtec_ntb *sndev,
 	u32 linksta;
 
 	pff = ioread32(&stdev->mmio_part_cfg_all[partition].vep_pff_inst_id);
-	if (pff == 0xFFFFFFFF) {
+	pff &= 0xFF;
+	if (pff == 0xFF) {
 		dev_warn(&sndev->stdev->dev,
 			 "Invalid pff, setting speed/width to 0");
 		*speed = 0;
@@ -1255,7 +1256,7 @@ static int crosslink_enum_partition(struct switchtec_ntb *sndev,
 {
 	struct part_cfg_regs __iomem *part_cfg =
 		&sndev->stdev->mmio_part_cfg_all[sndev->peer_partition];
-	u32 pff = ioread32(&part_cfg->vep_pff_inst_id);
+	u32 pff = ioread32(&part_cfg->vep_pff_inst_id) & 0xFF;
 	struct pff_csr_regs __iomem *mmio_pff =
 		&sndev->stdev->mmio_pff_csr[pff];
 	const u64 bar_space = 0x1000000000LL;
