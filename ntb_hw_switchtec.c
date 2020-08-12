@@ -460,7 +460,8 @@ static void switchtec_ntb_part_link_speed(struct switchtec_ntb *sndev,
 	u32 linksta;
 
 	pff = ioread32(&stdev->mmio_part_cfg_all[partition].vep_pff_inst_id);
-	if (pff == 0xFFFFFFFF) {
+	pff &= 0xFF;
+	if (pff == 0xFF) {
 		dev_warn(&sndev->stdev->dev,
 			 "Invalid pff, setting speed/width to 0");
 		*speed = 0;
@@ -897,7 +898,9 @@ static int switchtec_ntb_init_sndev(struct switchtec_ntb *sndev)
 	tpart_vec <<= 32;
 	tpart_vec |= ioread32(&sndev->mmio_ntb->ntp_info[self].target_part_low);
 
-	part_map = ioread64(&sndev->mmio_ntb->ep_map);
+	part_map = ioread32(&sndev->mmio_ntb->ep_map_high);
+	part_map <<= 32;
+	part_map |= ioread32(&sndev->mmio_ntb->ep_map_low);
 	tpart_vec &= part_map;
 	part_map &= ~(1 << sndev->self_partition);
 
@@ -985,19 +988,137 @@ static int config_rsvd_lut_win(struct switchtec_ntb *sndev,
 	return 0;
 }
 
-static int config_req_id_table(struct switchtec_ntb *sndev,
-			       struct ntb_ctrl_regs __iomem *mmio_ctrl,
-			       int *req_ids, int count)
+static int add_req_id(struct switchtec_ntb *sndev,
+		      struct ntb_ctrl_regs __iomem *mmio_ctrl, int req_id)
+{
+	int i, rc = 0;
+	int slot = -1;
+	u32 error;
+	int table_size;
+	u32 proxy_id = 0;
+	bool added = true;
+
+	table_size = ioread16(&mmio_ctrl->req_id_table_size);
+
+	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
+				   NTB_CTRL_PART_OP_LOCK,
+				   NTB_CTRL_PART_STATUS_LOCKED);
+	if (rc)
+		return rc;
+
+	iowrite32(NTB_PART_CTRL_ID_PROT_DIS, &mmio_ctrl->partition_ctrl);
+
+	for (i = 0; i < table_size; i++) {
+		proxy_id = ioread32(&mmio_ctrl->req_id_table[i]);
+
+		if (!(proxy_id & NTB_CTRL_REQ_ID_EN) && slot == -1)
+			slot = i;
+
+		if (proxy_id & NTB_CTRL_REQ_ID_EN &&
+		    proxy_id >> 16 == req_id) {
+			goto unlock_exit;
+		}
+	}
+
+	if (slot == -1) {
+		dev_err(&sndev->stdev->dev,
+			"Not enough requester IDs available.\n");
+		added = false;
+	} else {
+		iowrite32(req_id << 16 | NTB_CTRL_REQ_ID_EN,
+			  &mmio_ctrl->req_id_table[slot]);
+
+		dev_dbg(&sndev->stdev->dev,
+			"Requester ID %02X:%02X.%X -> BB:%02X.%X\n",
+			req_id >> 8, (req_id >> 3) & 0x1F,
+			req_id & 0x7, (proxy_id >> 4) & 0x1F,
+			(proxy_id >> 1) & 0x7);
+		added = true;
+	}
+
+unlock_exit:
+	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
+				   NTB_CTRL_PART_OP_CFG,
+				   NTB_CTRL_PART_STATUS_NORMAL);
+
+	if (rc == -EIO) {
+		error = ioread32(&mmio_ctrl->req_id_error);
+		dev_err(&sndev->stdev->dev,
+			"Error setting up the requester ID table: %08x\n",
+			error);
+	}
+
+	if (!added)
+		return -EFAULT;
+
+	return 0;
+}
+
+static int del_req_id(struct switchtec_ntb *sndev,
+		      struct ntb_ctrl_regs __iomem *mmio_ctrl, int req_id)
 {
 	int i, rc = 0;
 	u32 error;
-	u32 proxy_id;
+	int table_size;
+	u32 rid;
+	bool deleted = true;
 
-	if (ioread32(&mmio_ctrl->req_id_table_size) < count) {
-		dev_err(&sndev->stdev->dev,
-			"Not enough requester IDs available.\n");
-		return -EFAULT;
+	table_size = ioread16(&mmio_ctrl->req_id_table_size);
+
+	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
+				   NTB_CTRL_PART_OP_LOCK,
+				   NTB_CTRL_PART_STATUS_LOCKED);
+	if (rc)
+		return rc;
+
+	iowrite32(NTB_PART_CTRL_ID_PROT_DIS, &mmio_ctrl->partition_ctrl);
+
+	for (i = 0; i < table_size; i++) {
+		rid = ioread32(&mmio_ctrl->req_id_table[i]);
+
+		if (!(rid & NTB_CTRL_REQ_ID_EN))
+			continue;
+
+		rid >>= 16;
+		if (rid == req_id) {
+			iowrite32(0, &mmio_ctrl->req_id_table[i]);
+			break;
+		}
 	}
+
+	if (i == table_size) {
+		dev_err(&sndev->stdev->dev,
+			"Requester ID %02X:%02X.%X not in the table.\n",
+			PCI_BUS_NUM(req_id), PCI_SLOT(req_id),
+			PCI_FUNC(req_id));
+		deleted = false;
+	}
+
+	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
+				   NTB_CTRL_PART_OP_CFG,
+				   NTB_CTRL_PART_STATUS_NORMAL);
+
+	if (rc == -EIO) {
+		error = ioread32(&mmio_ctrl->req_id_error);
+		dev_err(&sndev->stdev->dev,
+			"Error setting up the requester ID table: %08x\n",
+			error);
+	}
+
+	if (!deleted)
+		return -ENXIO;
+
+	return 0;
+}
+
+static int clr_req_ids(struct switchtec_ntb *sndev,
+		       struct ntb_ctrl_regs __iomem *mmio_ctrl)
+{
+	int i, rc = 0;
+	u32 error;
+	int table_size;
+
+	table_size = ioread16(&mmio_ctrl->req_id_table_size);
 
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
 				   NTB_CTRL_PART_OP_LOCK,
@@ -1008,17 +1129,8 @@ static int config_req_id_table(struct switchtec_ntb *sndev,
 	iowrite32(NTB_PART_CTRL_ID_PROT_DIS,
 		  &mmio_ctrl->partition_ctrl);
 
-	for (i = 0; i < count; i++) {
-		iowrite32(req_ids[i] << 16 | NTB_CTRL_REQ_ID_EN,
-			  &mmio_ctrl->req_id_table[i]);
-
-		proxy_id = ioread32(&mmio_ctrl->req_id_table[i]);
-		dev_dbg(&sndev->stdev->dev,
-			"Requester ID %02X:%02X.%X -> BB:%02X.%X\n",
-			req_ids[i] >> 8, (req_ids[i] >> 3) & 0x1F,
-			req_ids[i] & 0x7, (proxy_id >> 4) & 0x1F,
-			(proxy_id >> 1) & 0x7);
-	}
+	for (i = 0; i < table_size; i++)
+		iowrite32(0, &mmio_ctrl->req_id_table[i]);
 
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
 				   NTB_CTRL_PART_OP_CFG,
@@ -1103,20 +1215,28 @@ static int crosslink_setup_mws(struct switchtec_ntb *sndev, int ntb_lut_idx,
 static int crosslink_setup_req_ids(struct switchtec_ntb *sndev,
 	struct ntb_ctrl_regs __iomem *mmio_ctrl)
 {
-	int req_ids[16];
 	int i;
 	u32 proxy_id;
+	int table_size;
+	int rc;
 
-	for (i = 0; i < ARRAY_SIZE(req_ids); i++) {
+	table_size = ioread16(&mmio_ctrl->req_id_table_size);
+
+	clr_req_ids(sndev, mmio_ctrl);
+
+	for (i = 0; i < table_size; i++) {
 		proxy_id = ioread32(&sndev->mmio_self_ctrl->req_id_table[i]);
 
 		if (!(proxy_id & NTB_CTRL_REQ_ID_EN))
-			break;
+			continue;
 
-		req_ids[i] = ((proxy_id >> 1) & 0xFF);
+		proxy_id = ((proxy_id >> 1) & 0xFF);
+		rc = add_req_id(sndev, mmio_ctrl, proxy_id);
+		if (rc)
+			return rc;
 	}
 
-	return config_req_id_table(sndev, mmio_ctrl, req_ids, i);
+	return 0;
 }
 
 /*
@@ -1129,7 +1249,7 @@ static int crosslink_enum_partition(struct switchtec_ntb *sndev,
 {
 	struct part_cfg_regs __iomem *part_cfg =
 		&sndev->stdev->mmio_part_cfg_all[sndev->peer_partition];
-	u32 pff = ioread32(&part_cfg->vep_pff_inst_id);
+	u32 pff = ioread32(&part_cfg->vep_pff_inst_id) & 0xFF;
 	struct pff_csr_regs __iomem *mmio_pff =
 		&sndev->stdev->mmio_pff_csr[pff];
 	const u64 bar_space = 0x1000000000LL;
@@ -1317,20 +1437,21 @@ static void switchtec_ntb_init_msgs(struct switchtec_ntb *sndev)
 static int
 switchtec_ntb_init_req_id_table(struct switchtec_ntb *sndev)
 {
-	int req_ids[2];
+	int req_id;
+	int rc;
 
 	/*
 	 * Root Complex Requester ID (which is 0:00.0)
 	 */
-	req_ids[0] = 0;
+	rc = add_req_id(sndev, sndev->mmio_self_ctrl, 0);
+	if (rc)
+		return rc;
 
 	/*
 	 * Host Bridge Requester ID (as read from the mmap address)
 	 */
-	req_ids[1] = ioread16(&sndev->mmio_ntb->requester_id);
-
-	return config_req_id_table(sndev, sndev->mmio_self_ctrl, req_ids,
-				   ARRAY_SIZE(req_ids));
+	req_id = ioread16(&sndev->mmio_ntb->requester_id);
+	return add_req_id(sndev, sndev->mmio_self_ctrl, req_id);
 }
 
 static void switchtec_ntb_init_shared(struct switchtec_ntb *sndev)
@@ -1511,6 +1632,102 @@ static int switchtec_ntb_reinit_peer(struct switchtec_ntb *sndev)
 	return rc;
 }
 
+static ssize_t add_requester_id_store(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	struct ntb_dev *ntb = container_of(dev, struct ntb_dev, dev);
+	struct switchtec_ntb *sndev = ntb_sndev(ntb);
+	int req_id;
+	int bus, device, func;
+	int rc;
+
+	if (sscanf(buf, "%x:%x.%x", &bus, &device, &func) != 3)
+		return -EINVAL;
+
+	req_id = PCI_DEVID(bus, PCI_DEVFN(device, func));
+	rc = add_req_id(sndev, sndev->mmio_self_ctrl, req_id);
+	if (rc)
+		return rc;
+
+	if (crosslink_is_enabled(sndev)) {
+		rc = crosslink_setup_req_ids(sndev, sndev->mmio_peer_ctrl);
+		if (rc)
+			return rc;
+	}
+
+	return count;
+}
+static DEVICE_ATTR_WO(add_requester_id);
+
+static ssize_t del_requester_id_store(struct device *dev,
+				      struct device_attribute *attr,
+				      const char *buf, size_t count)
+{
+	struct ntb_dev *ntb = container_of(dev, struct ntb_dev, dev);
+	struct switchtec_ntb *sndev = ntb_sndev(ntb);
+	int req_id;
+	int bus, device, func;
+	int rc;
+
+	if (sscanf(buf, "%x:%x.%x", &bus, &device, &func) != 3)
+		return -EINVAL;
+
+	req_id = PCI_DEVID(bus, PCI_DEVFN(device, func));
+	rc = del_req_id(sndev, sndev->mmio_self_ctrl, req_id);
+	if (rc)
+		return rc;
+
+	if (crosslink_is_enabled(sndev)) {
+		rc = crosslink_setup_req_ids(sndev, sndev->mmio_peer_ctrl);
+		if (rc)
+			return rc;
+	}
+
+	return count;
+}
+static DEVICE_ATTR_WO(del_requester_id);
+
+static ssize_t requester_ids_show(struct device *dev,
+				  struct device_attribute *attr, char *buf)
+{
+	struct ntb_dev *ntb = container_of(dev, struct ntb_dev, dev);
+	struct switchtec_ntb *sndev = ntb_sndev(ntb);
+	int i;
+	int table_size;
+	char req_id_str[32];
+	u32 req_id;
+	ssize_t n = 0;
+
+	table_size = ioread16(&sndev->mmio_self_ctrl->req_id_table_size);
+
+	for (i = 0; i < table_size; i++) {
+		req_id = ioread32(&sndev->mmio_self_ctrl->req_id_table[i]);
+
+		if (req_id & NTB_CTRL_REQ_ID_EN) {
+			req_id >>= 16;
+			n += sprintf(req_id_str, "%d\t%02X:%02X.%X\n", i,
+				     PCI_BUS_NUM(req_id), PCI_SLOT(req_id),
+				     PCI_FUNC(req_id));
+			strcat(buf, req_id_str);
+		}
+	}
+
+	return n;
+}
+static DEVICE_ATTR_RO(requester_ids);
+
+static struct attribute *switchtec_ntb_device_attrs[] = {
+	&dev_attr_add_requester_id.attr,
+	&dev_attr_del_requester_id.attr,
+	&dev_attr_requester_ids.attr,
+	NULL,
+};
+
+static const struct attribute_group switchtec_ntb_device_group = {
+	.attrs = switchtec_ntb_device_attrs,
+};
+
 static int switchtec_ntb_add(struct device *dev,
 			     struct class_interface *class_intf)
 {
@@ -1564,6 +1781,11 @@ static int switchtec_ntb_add(struct device *dev,
 	if (rc)
 		goto deinit_and_exit;
 
+	rc = sysfs_create_group(&sndev->ntb.dev.kobj,
+				&switchtec_ntb_device_group);
+	if (rc)
+		goto deinit_and_exit;
+
 	stdev->sndev = sndev;
 	stdev->link_notifier = switchtec_ntb_link_notification;
 	dev_info(dev, "NTB device registered\n");
@@ -1593,6 +1815,7 @@ static void switchtec_ntb_remove(struct device *dev,
 
 	stdev->link_notifier = NULL;
 	stdev->sndev = NULL;
+	sysfs_remove_group(&sndev->ntb.dev.kobj, &switchtec_ntb_device_group);
 	ntb_unregister_device(&sndev->ntb);
 	switchtec_ntb_deinit_db_msg_irq(sndev);
 	switchtec_ntb_deinit_shared_mw(sndev);
