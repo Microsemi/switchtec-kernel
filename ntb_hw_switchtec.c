@@ -1028,6 +1028,7 @@ static int add_req_id(struct switchtec_ntb *sndev,
 		iowrite32(req_id << 16 | NTB_CTRL_REQ_ID_EN,
 			  &mmio_ctrl->req_id_table[slot]);
 
+		proxy_id = ioread32(&mmio_ctrl->req_id_table[slot]);
 		dev_dbg(&sndev->stdev->dev,
 			"Requester ID %02X:%02X.%X -> BB:%02X.%X\n",
 			req_id >> 8, (req_id >> 3) & 0x1F,
