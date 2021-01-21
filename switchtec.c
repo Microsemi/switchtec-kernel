@@ -363,7 +363,7 @@ static ssize_t field ## _show(struct device *dev, \
 	struct switchtec_dev *stdev = to_stdev(dev); \
 	struct sys_info_regs __iomem *si = stdev->mmio_sys_info; \
 	\
-	if (stdev->gen == SWITCHTEC_GEN4) \
+	if (stdev->gen >= SWITCHTEC_GEN4) \
 		return io_string_show(buf, &si->gen4.field, \
 				      sizeof(si->gen4.field)); \
 	else \
@@ -655,7 +655,7 @@ static int ioctl_flash_info(struct switchtec_dev *stdev,
 	if (stdev->gen == SWITCHTEC_GEN3) {
 		info.flash_length = ioread32(&fi->gen3.flash_length);
 		info.num_partitions = SWITCHTEC_NUM_PARTITIONS_GEN3;
-	} else if (stdev->gen == SWITCHTEC_GEN4) {
+	} else if (stdev->gen >= SWITCHTEC_GEN4) {
 		info.flash_length = ioread32(&fi->gen4.flash_length);
 		info.num_partitions = SWITCHTEC_NUM_PARTITIONS_GEN4;
 	} else {
@@ -861,7 +861,7 @@ static int ioctl_flash_part_info(struct switchtec_dev *stdev,
 		ret = flash_part_info_gen3(stdev, &info);
 		if (ret)
 			return ret;
-	} else if (stdev->gen == SWITCHTEC_GEN4) {
+	} else if (stdev->gen >= SWITCHTEC_GEN4) {
 		ret = flash_part_info_gen4(stdev, &info);
 		if (ret)
 			return ret;
@@ -1595,7 +1595,7 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	stdev->mmio_sys_info = stdev->mmio + SWITCHTEC_GAS_SYS_INFO_OFFSET;
 	stdev->mmio_flash_info = stdev->mmio + SWITCHTEC_GAS_FLASH_INFO_OFFSET;
 	stdev->mmio_ntb = stdev->mmio + SWITCHTEC_GAS_NTB_OFFSET;
-	if (stdev->gen == SWITCHTEC_GEN4)
+	if (stdev->gen >= SWITCHTEC_GEN4)
 		stdev->partition = ioread8(&stdev->mmio_sys_info->
 					   gen4.partition_id);
 	else
