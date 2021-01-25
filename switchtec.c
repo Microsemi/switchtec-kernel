@@ -363,7 +363,7 @@ static ssize_t field ## _show(struct device *dev, \
 	struct switchtec_dev *stdev = to_stdev(dev); \
 	struct sys_info_regs __iomem *si = stdev->mmio_sys_info; \
 	\
-	if (stdev->gen == SWITCHTEC_GEN4) \
+	if (stdev->gen >= SWITCHTEC_GEN4) \
 		return io_string_show(buf, &si->gen4.field, \
 				      sizeof(si->gen4.field)); \
 	else \
@@ -655,7 +655,7 @@ static int ioctl_flash_info(struct switchtec_dev *stdev,
 	if (stdev->gen == SWITCHTEC_GEN3) {
 		info.flash_length = ioread32(&fi->gen3.flash_length);
 		info.num_partitions = SWITCHTEC_NUM_PARTITIONS_GEN3;
-	} else if (stdev->gen == SWITCHTEC_GEN4) {
+	} else if (stdev->gen >= SWITCHTEC_GEN4) {
 		info.flash_length = ioread32(&fi->gen4.flash_length);
 		info.num_partitions = SWITCHTEC_NUM_PARTITIONS_GEN4;
 	} else {
@@ -861,7 +861,7 @@ static int ioctl_flash_part_info(struct switchtec_dev *stdev,
 		ret = flash_part_info_gen3(stdev, &info);
 		if (ret)
 			return ret;
-	} else if (stdev->gen == SWITCHTEC_GEN4) {
+	} else if (stdev->gen >= SWITCHTEC_GEN4) {
 		ret = flash_part_info_gen4(stdev, &info);
 		if (ret)
 			return ret;
@@ -1595,7 +1595,7 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	stdev->mmio_sys_info = stdev->mmio + SWITCHTEC_GAS_SYS_INFO_OFFSET;
 	stdev->mmio_flash_info = stdev->mmio + SWITCHTEC_GAS_FLASH_INFO_OFFSET;
 	stdev->mmio_ntb = stdev->mmio + SWITCHTEC_GAS_NTB_OFFSET;
-	if (stdev->gen == SWITCHTEC_GEN4)
+	if (stdev->gen >= SWITCHTEC_GEN4)
 		stdev->partition = ioread8(&stdev->mmio_sys_info->
 					   gen4.partition_id);
 	else
@@ -1865,6 +1865,36 @@ static const struct pci_device_id switchtec_pci_tbl[] = {
 	SWITCHTEC_PCI_DEVICE(0x4252, SWITCHTEC_GEN4),  //PAX 52XG4
 	SWITCHTEC_PCI_DEVICE(0x4236, SWITCHTEC_GEN4),  //PAX 36XG4
 	SWITCHTEC_PCI_DEVICE(0x4228, SWITCHTEC_GEN4),  //PAX 28XG4
+	SWITCHTEC_PCI_DEVICE(0x5000, SWITCHTEC_GEN5),  //PFX 100XG5
+	SWITCHTEC_PCI_DEVICE(0x5084, SWITCHTEC_GEN5),  //PFX 84XG5
+	SWITCHTEC_PCI_DEVICE(0x5068, SWITCHTEC_GEN5),  //PFX 68XG5
+	SWITCHTEC_PCI_DEVICE(0x5052, SWITCHTEC_GEN5),  //PFX 52XG5
+	SWITCHTEC_PCI_DEVICE(0x5036, SWITCHTEC_GEN5),  //PFX 36XG5
+	SWITCHTEC_PCI_DEVICE(0x5028, SWITCHTEC_GEN5),  //PFX 28XG5
+	SWITCHTEC_PCI_DEVICE(0x5100, SWITCHTEC_GEN5),  //PSX 100XG5
+	SWITCHTEC_PCI_DEVICE(0x5184, SWITCHTEC_GEN5),  //PSX 84XG5
+	SWITCHTEC_PCI_DEVICE(0x5168, SWITCHTEC_GEN5),  //PSX 68XG5
+	SWITCHTEC_PCI_DEVICE(0x5152, SWITCHTEC_GEN5),  //PSX 52XG5
+	SWITCHTEC_PCI_DEVICE(0x5136, SWITCHTEC_GEN5),  //PSX 36XG5
+	SWITCHTEC_PCI_DEVICE(0x5128, SWITCHTEC_GEN5),  //PSX 28XG5
+	SWITCHTEC_PCI_DEVICE(0x5200, SWITCHTEC_GEN5),  //PAX 100XG5
+	SWITCHTEC_PCI_DEVICE(0x5284, SWITCHTEC_GEN5),  //PAX 84XG5
+	SWITCHTEC_PCI_DEVICE(0x5268, SWITCHTEC_GEN5),  //PAX 68XG5
+	SWITCHTEC_PCI_DEVICE(0x5252, SWITCHTEC_GEN5),  //PAX 52XG5
+	SWITCHTEC_PCI_DEVICE(0x5236, SWITCHTEC_GEN5),  //PAX 36XG5
+	SWITCHTEC_PCI_DEVICE(0x5228, SWITCHTEC_GEN5),  //PAX 28XG5
+	SWITCHTEC_PCI_DEVICE(0x5300, SWITCHTEC_GEN5),  //PAX-A 100XG5
+	SWITCHTEC_PCI_DEVICE(0x5384, SWITCHTEC_GEN5),  //PAX-A 84XG5
+	SWITCHTEC_PCI_DEVICE(0x5368, SWITCHTEC_GEN5),  //PAX-A 68XG5
+	SWITCHTEC_PCI_DEVICE(0x5352, SWITCHTEC_GEN5),  //PAX-A 52XG5
+	SWITCHTEC_PCI_DEVICE(0x5336, SWITCHTEC_GEN5),  //PAX-A 36XG5
+	SWITCHTEC_PCI_DEVICE(0x5328, SWITCHTEC_GEN5),  //PAX-A 28XG5
+	SWITCHTEC_PCI_DEVICE(0x5400, SWITCHTEC_GEN5),  //PFX-A 100XG5
+	SWITCHTEC_PCI_DEVICE(0x5484, SWITCHTEC_GEN5),  //PFX-A 84XG5
+	SWITCHTEC_PCI_DEVICE(0x5468, SWITCHTEC_GEN5),  //PFX-A 68XG5
+	SWITCHTEC_PCI_DEVICE(0x5452, SWITCHTEC_GEN5),  //PFX-A 52XG5
+	SWITCHTEC_PCI_DEVICE(0x5436, SWITCHTEC_GEN5),  //PFX-A 36XG5
+	SWITCHTEC_PCI_DEVICE(0x5428, SWITCHTEC_GEN5),  //PFX-A 28XG5
 	{0}
 };
 MODULE_DEVICE_TABLE(pci, switchtec_pci_tbl);
