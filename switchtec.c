@@ -366,13 +366,14 @@ static ssize_t field ## _show(struct device *dev, \
 { \
 	struct switchtec_dev *stdev = to_stdev(dev); \
 	struct sys_info_regs __iomem *si = stdev->mmio_sys_info; \
-	\
-	if (stdev->gen == SWITCHTEC_GEN4) \
+	if (stdev->gen == SWITCHTEC_GEN3) \
+		return io_string_show(buf, &si->gen3.field, \
+				      sizeof(si->gen3.field)); \
+	else if (stdev->gen == SWITCHTEC_GEN4) \
 		return io_string_show(buf, &si->gen4.field, \
 				      sizeof(si->gen4.field)); \
 	else \
-		return io_string_show(buf, &si->gen3.field, \
-				      sizeof(si->gen3.field)); \
+		return -ENOTSUPP; \
 } \
 \
 static DEVICE_ATTR_RO(field)
@@ -387,7 +388,7 @@ static ssize_t component_vendor_show(struct device *dev,
 	struct switchtec_dev *stdev = to_stdev(dev);
 	struct sys_info_regs __iomem *si = stdev->mmio_sys_info;
 
-	/* component_vendor field not supported after gen4 */
+	/* component_vendor field not supported after gen3 */
 	if (stdev->gen != SWITCHTEC_GEN3)
 		return sprintf(buf, "none\n");
 
@@ -402,7 +403,7 @@ static ssize_t component_id_show(struct device *dev,
 	struct switchtec_dev *stdev = to_stdev(dev);
 	int id = ioread16(&stdev->mmio_sys_info->gen3.component_id);
 
-	/* component_id field not supported after gen4 */
+	/* component_id field not supported after gen3 */
 	if (stdev->gen != SWITCHTEC_GEN3)
 		return sprintf(buf, "none\n");
 
@@ -416,7 +417,7 @@ static ssize_t component_revision_show(struct device *dev,
 	struct switchtec_dev *stdev = to_stdev(dev);
 	int rev = ioread8(&stdev->mmio_sys_info->gen3.component_revision);
 
-	/* component_revision field not supported after gen4 */
+	/* component_revision field not supported after gen3 */
 	if (stdev->gen != SWITCHTEC_GEN3)
 		return sprintf(buf, "255\n");
 
@@ -1303,7 +1304,7 @@ static void stdev_release(struct device *dev)
 {
 	struct switchtec_dev *stdev = to_stdev(dev);
 
-	if (stdev->dma_mrpc){
+	if (stdev->dma_mrpc) {
 		iowrite32(0, &stdev->mmio_mrpc->dma_en);
 		flush_wc_buf(stdev);
 		writeq(0, &stdev->mmio_mrpc->dma_addr);
@@ -1520,7 +1521,7 @@ static int switchtec_init_isr(struct switchtec_dev *stdev)
 		return rc;
 
 	dma_mrpc_irq = ioread32(&stdev->mmio_mrpc->dma_vector);
-	if ( dma_mrpc_irq < 0 || dma_mrpc_irq >= nvecs)
+	if (dma_mrpc_irq < 0 || dma_mrpc_irq >= nvecs)
 		return -EFAULT;
 
 	dma_mrpc_irq  = pci_irq_vector(stdev->pdev, dma_mrpc_irq);
@@ -1569,6 +1570,7 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	int rc;
 	void __iomem *map;
 	unsigned long res_start, res_len;
+	u32 __iomem *part_id;
 
 	rc = pcim_enable_device(pdev);
 	if (rc)
@@ -1603,12 +1605,15 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	stdev->mmio_sys_info = stdev->mmio + SWITCHTEC_GAS_SYS_INFO_OFFSET;
 	stdev->mmio_flash_info = stdev->mmio + SWITCHTEC_GAS_FLASH_INFO_OFFSET;
 	stdev->mmio_ntb = stdev->mmio + SWITCHTEC_GAS_NTB_OFFSET;
-	if (stdev->gen == SWITCHTEC_GEN4)
-		stdev->partition = ioread8(&stdev->mmio_sys_info->
-					   gen4.partition_id);
+
+	if (stdev->gen == SWITCHTEC_GEN3)
+		part_id = &stdev->mmio_sys_info->gen3.partition_id;
+	else if (stdev->gen == SWITCHTEC_GEN4)
+		part_id = &stdev->mmio_sys_info->gen4.partition_id;
 	else
-		stdev->partition = ioread8(&stdev->mmio_sys_info->
-					   gen3.partition_id);
+		return -ENOTSUPP;
+
+	stdev->partition = ioread8(part_id);
 	stdev->partition_count = ioread8(&stdev->mmio_ntb->partition_count);
 	stdev->mmio_part_cfg_all = stdev->mmio + SWITCHTEC_GAS_PART_CFG_OFFSET;
 	stdev->mmio_part_cfg = &stdev->mmio_part_cfg_all[stdev->partition];
@@ -1627,8 +1632,10 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	if (!ioread32(&stdev->mmio_mrpc->dma_ver))
 		return 0;
 
-	stdev->dma_mrpc = dma_alloc_coherent(&stdev->pdev->dev, sizeof(*stdev->dma_mrpc),
-					     &stdev->dma_mrpc_dma_addr, GFP_KERNEL);
+	stdev->dma_mrpc = dma_alloc_coherent(&stdev->pdev->dev,
+					     sizeof(*stdev->dma_mrpc),
+					     &stdev->dma_mrpc_dma_addr,
+					     GFP_KERNEL);
 	if (stdev->dma_mrpc == NULL)
 		return -ENOMEM;
 
