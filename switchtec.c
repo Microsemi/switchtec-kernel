@@ -317,11 +317,6 @@ out:
 	mutex_unlock(&stdev->mrpc_mutex);
 }
 
-#define __ATTR_RO(_name) {                                              \
-        .attr   = { .name = __stringify(_name), .mode = 0444 },         \
-        .show   = _name##_show,                                         \
-}
-
 #define DEVICE_ATTR_RO(_name) \
         struct device_attribute dev_attr_##_name = __ATTR_RO(_name)
 
