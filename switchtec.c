@@ -1806,7 +1806,7 @@ static void switchtec_pci_error_resume(struct pci_dev *pdev)
 	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
 
 	dev_info(&stdev->dev, "resume.\n");
-	pci_cleanup_aer_uncorrect_error_status(pdev);
+	pci_aer_clear_nonfatal_status(pdev);
 }
 
 static const struct pci_error_handlers switchtec_pci_err_handler = {
