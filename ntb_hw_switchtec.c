@@ -1021,8 +1021,6 @@ static int add_req_id(struct switchtec_ntb *sndev,
 	if (rc)
 		return rc;
 
-	iowrite32(NTB_PART_CTRL_ID_PROT_DIS, &mmio_ctrl->partition_ctrl);
-
 	for (i = 0; i < table_size; i++) {
 		proxy_id = ioread32(&mmio_ctrl->req_id_table[i]);
 
@@ -1087,8 +1085,6 @@ static int del_req_id(struct switchtec_ntb *sndev,
 	if (rc)
 		return rc;
 
-	iowrite32(NTB_PART_CTRL_ID_PROT_DIS, &mmio_ctrl->partition_ctrl);
-
 	for (i = 0; i < table_size; i++) {
 		rid = ioread32(&mmio_ctrl->req_id_table[i]);
 
@@ -1141,9 +1137,6 @@ static int clr_req_ids(struct switchtec_ntb *sndev,
 				   NTB_CTRL_PART_STATUS_LOCKED);
 	if (rc)
 		return rc;
-
-	iowrite32(NTB_PART_CTRL_ID_PROT_DIS,
-		  &mmio_ctrl->partition_ctrl);
 
 	for (i = 0; i < table_size; i++)
 		iowrite32(0, &mmio_ctrl->req_id_table[i]);
