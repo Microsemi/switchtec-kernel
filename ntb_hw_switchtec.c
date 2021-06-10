@@ -318,6 +318,9 @@ static int switchtec_ntb_mw_set_trans(struct ntb_dev *ntb, int pidx, int widx,
 	if (pidx != NTB_DEF_PEER_IDX)
 		return -EINVAL;
 
+	printk("%s link is %d", __FUNCTION__, sndev->link_is_up);
+//	mdelay(500);
+	printk("%s link is %d", __FUNCTION__, sndev->link_is_up);
 	dev_dbg(&sndev->stdev->dev, "MW %d: part %d addr %pad size %pap\n",
 		widx, pidx, &addr, &size);
 
@@ -541,6 +544,7 @@ static void switchtec_ntb_link_status_update(struct switchtec_ntb *sndev)
 	int link_sta;
 	int old = sndev->link_is_up;
 
+	printk("%s\n", __FUNCTION__);
 	link_sta = sndev->self_shared->link_sta;
 	if (link_sta) {
 		u64 peer = ioread64(&sndev->peer_shared->magic);
@@ -569,6 +573,7 @@ static void check_link_status_work(struct work_struct *work)
 {
 	struct switchtec_ntb *sndev;
 
+	printk("%s\n", __FUNCTION__);
 	sndev = container_of(work, struct switchtec_ntb,
 			     check_link_status_work);
 
@@ -601,6 +606,7 @@ static void switchtec_ntb_link_notification(struct switchtec_dev *stdev)
 {
 	struct switchtec_ntb *sndev = stdev->sndev;
 
+	printk("%s\n", __FUNCTION__);
 	switchtec_ntb_check_link(sndev, MSG_CHECK_LINK);
 }
 
@@ -1013,6 +1019,7 @@ static int add_req_id(struct switchtec_ntb *sndev,
 	u32 proxy_id = 0;
 	bool added = true;
 
+	printk("%s\n", __FUNCTION__);
 	table_size = ioread16(&mmio_ctrl->req_id_table_size);
 
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
@@ -1020,6 +1027,7 @@ static int add_req_id(struct switchtec_ntb *sndev,
 				   NTB_CTRL_PART_STATUS_LOCKED);
 	if (rc)
 		return rc;
+	printk("%s after ntb_part_op\n", __FUNCTION__);
 
 	for (i = 0; i < table_size; i++) {
 		proxy_id = ioread32(&mmio_ctrl->req_id_table[i]);
@@ -1130,6 +1138,7 @@ static int clr_req_ids(struct switchtec_ntb *sndev,
 	u32 error;
 	int table_size;
 
+	printk("%s\n", __FUNCTION__);
 	table_size = ioread16(&mmio_ctrl->req_id_table_size);
 
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
@@ -1152,6 +1161,7 @@ static int clr_req_ids(struct switchtec_ntb *sndev,
 			error);
 	}
 
+	printk("%s succeeded\n", __FUNCTION__);
 	return 0;
 }
 
@@ -1231,6 +1241,7 @@ static int crosslink_setup_req_ids(struct switchtec_ntb *sndev,
 	int table_size;
 	int rc;
 
+	printk("%s\n", __FUNCTION__);
 	table_size = ioread16(&mmio_ctrl->req_id_table_size);
 
 	clr_req_ids(sndev, mmio_ctrl);
@@ -1478,6 +1489,7 @@ switchtec_ntb_init_req_id_table(struct switchtec_ntb *sndev)
 	int req_id;
 	int rc;
 
+	printk("%s\n", __FUNCTION__);
 	/*
 	 * Root Complex Requester ID (which is 0:00.0)
 	 */
