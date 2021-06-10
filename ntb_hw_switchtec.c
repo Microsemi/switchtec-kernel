@@ -635,11 +635,11 @@ static int switchtec_ntb_link_enable(struct ntb_dev *ntb,
 
 	dev_dbg(&sndev->stdev->dev, "enabling link\n");
 
-	sndev->self_shared->link_sta = 1;
-	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_LINK_UP);
-
 	if (crosslink_is_enabled(sndev))
 		crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
+
+	sndev->self_shared->link_sta = 1;
+	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_LINK_UP);
 
 	switchtec_ntb_link_status_update(sndev);
 
