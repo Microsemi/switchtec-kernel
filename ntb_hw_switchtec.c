@@ -699,8 +699,6 @@ static int switchtec_ntb_link_disable(struct ntb_dev *ntb)
 	sndev->self_shared->link_sta = 0;
 	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_LINK_DOWN);
 
-	switchtec_ntb_link_status_update(sndev);
-
 	return 0;
 }
 
