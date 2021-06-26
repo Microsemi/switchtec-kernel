@@ -536,12 +536,19 @@ enum switchtec_msg {
 
 static int switchtec_ntb_reinit_peer(struct switchtec_ntb *sndev);
 
+static int crosslink_setup_req_ids(struct switchtec_ntb *sndev,
+	struct ntb_ctrl_regs __iomem *mmio_ctrl);
+
 static void switchtec_ntb_link_status_update(struct switchtec_ntb *sndev)
 {
 	int link_sta;
 	int old = sndev->link_is_up;
 
 	link_sta = sndev->self_shared->link_sta;
+
+	if (link_sta && !sndev->link_is_up && crosslink_is_enabled(sndev))
+		crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
+
 	if (link_sta) {
 		u64 peer = ioread64(&sndev->peer_shared->magic);
 
@@ -618,9 +625,6 @@ static u64 switchtec_ntb_link_is_up(struct ntb_dev *ntb,
 	return sndev->link_is_up;
 }
 
-static int crosslink_setup_req_ids(struct switchtec_ntb *sndev,
-	struct ntb_ctrl_regs __iomem *mmio_ctrl);
-
 static int switchtec_ntb_link_enable(struct ntb_dev *ntb,
 				     enum ntb_speed max_speed,
 				     enum ntb_width max_width)
@@ -631,11 +635,6 @@ static int switchtec_ntb_link_enable(struct ntb_dev *ntb,
 
 	sndev->self_shared->link_sta = 1;
 	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_LINK_UP);
-
-	if (crosslink_is_enabled(sndev))
-		crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
-
-	switchtec_ntb_link_status_update(sndev);
 
 	return 0;
 }
@@ -1363,10 +1362,6 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 				 &bar_addrs[1], bar_cnt - 1);
 	if (rc)
 		return rc;
-
-	crosslink_init_dbmsgs(sndev);
-
-	crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
 
 	return 0;
 }
