@@ -526,41 +526,107 @@ static void crosslink_init_dbmsgs(struct switchtec_ntb *sndev)
 		  &sndev->mmio_peer_dbmsg->odb_mask);
 }
 
+enum switchtec_link_state {
+	LINK_DOWN = 0,
+	LINK_WAIT = 1,
+	LINK_READY = 2,
+	LINK_UP = 3,
+};
+
 enum switchtec_msg {
 	LINK_MESSAGE = 0,
-	MSG_LINK_UP = 1,
-	MSG_LINK_DOWN = 2,
-	MSG_CHECK_LINK = 3,
-	MSG_LINK_FORCE_DOWN = 4,
+	MSG_CHECK_LINK = 1,
+	MSG_LINK_FORCE_DOWN = 2,
 };
 
 static int switchtec_ntb_reinit_peer(struct switchtec_ntb *sndev);
 
+static int crosslink_setup_req_ids(struct switchtec_ntb *sndev,
+	struct ntb_ctrl_regs __iomem *mmio_ctrl);
+
+const char * link_sta_to_str(enum switchtec_link_state sta)
+{
+	switch (sta) {
+	case LINK_UP:
+		return "LINK_UP";
+	case LINK_WAIT:
+		return "LINK_WAIT";
+	case LINK_READY:
+		return "LINK_READY";
+	case LINK_DOWN:
+		return "LINK_DOWN";
+	default:
+		return "UNKNOWN STATE";
+	}
+}
+
 static void switchtec_ntb_link_status_update(struct switchtec_ntb *sndev)
 {
-	int link_sta;
-	int old = sndev->link_is_up;
+	int peer_link_sta;
+	int *self_link_sta = &sndev->self_shared->link_sta;
+	int old_link_is_up = sndev->link_is_up;
 
-	link_sta = sndev->self_shared->link_sta;
-	if (link_sta) {
+	printk("%s self_link_sta %s\n", __FUNCTION__,
+	       link_sta_to_str(*self_link_sta));
+
+	if (*self_link_sta == LINK_WAIT && crosslink_is_enabled(sndev))
+		crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
+
+	if (*self_link_sta != LINK_DOWN) {
 		u64 peer = ioread64(&sndev->peer_shared->magic);
 
 		if ((peer & 0xFFFFFFFF) == SWITCHTEC_NTB_MAGIC)
-			link_sta = peer >> 32;
+			peer_link_sta = peer >> 32;
 		else
-			link_sta = 0;
+			peer_link_sta = 0;
 	}
 
-	sndev->link_is_up = link_sta;
+	printk("%s peer_link_sta %s\n", __FUNCTION__,
+	       link_sta_to_str(peer_link_sta));
+
+	switch (*self_link_sta) {
+	case LINK_UP:
+		sndev->link_is_up = 1;
+		break;
+	case LINK_WAIT:
+		if (peer_link_sta == LINK_WAIT) {
+			*self_link_sta = LINK_READY;
+			printk("%s, send MSG_CHECK_LINK\n", __FUNCTION__);
+			switchtec_ntb_send_msg(sndev, LINK_MESSAGE,
+					MSG_CHECK_LINK);
+		} else if (peer_link_sta == LINK_READY) {
+			*self_link_sta = LINK_UP;
+			sndev->link_is_up = 1;
+			printk("%s, send MSG_CHECK_LINK\n", __FUNCTION__);
+			switchtec_ntb_send_msg(sndev, LINK_MESSAGE,
+					MSG_CHECK_LINK);
+		} else if (peer_link_sta == LINK_UP) {
+			switchtec_ntb_send_msg(sndev, LINK_MESSAGE,
+					MSG_CHECK_LINK);
+		}
+		break;
+	case LINK_READY:
+		if (peer_link_sta == LINK_READY ||
+		    peer_link_sta == LINK_UP) {
+			*self_link_sta = LINK_UP;
+			sndev->link_is_up = 1;
+		}
+		break;
+	case LINK_DOWN:
+		sndev->link_is_up = 0;
+		break;
+	default:
+		return;
+	}
+
 	switchtec_ntb_set_link_speed(sndev);
 
-	if (link_sta != old) {
-		switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_CHECK_LINK);
+	if (sndev->link_is_up != old_link_is_up) {
 		ntb_link_event(&sndev->ntb);
 		dev_info(&sndev->stdev->dev, "ntb link %s\n",
-			 link_sta ? "up" : "down");
+			 sndev->link_is_up ? "up" : "down");
 
-		if (link_sta)
+		if (sndev->link_is_up)
 			crosslink_init_dbmsgs(sndev);
 	}
 }
@@ -577,6 +643,8 @@ static void check_link_status_work(struct work_struct *work)
 		switchtec_ntb_reinit_peer(sndev);
 
 		if (sndev->link_is_up) {
+			if (sndev->self_shared->link_sta != LINK_DOWN)
+				sndev->self_shared->link_sta = LINK_WAIT;
 			sndev->link_is_up = 0;
 			ntb_link_event(&sndev->ntb);
 			dev_info(&sndev->stdev->dev, "ntb link forced down\n");
@@ -618,9 +686,6 @@ static u64 switchtec_ntb_link_is_up(struct ntb_dev *ntb,
 	return sndev->link_is_up;
 }
 
-static int crosslink_setup_req_ids(struct switchtec_ntb *sndev,
-	struct ntb_ctrl_regs __iomem *mmio_ctrl);
-
 static int switchtec_ntb_link_enable(struct ntb_dev *ntb,
 				     enum ntb_speed max_speed,
 				     enum ntb_width max_width)
@@ -629,13 +694,9 @@ static int switchtec_ntb_link_enable(struct ntb_dev *ntb,
 
 	dev_dbg(&sndev->stdev->dev, "enabling link\n");
 
-	sndev->self_shared->link_sta = 1;
-	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_LINK_UP);
-
-	if (crosslink_is_enabled(sndev))
-		crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
-
-	switchtec_ntb_link_status_update(sndev);
+	sndev->self_shared->link_sta = LINK_WAIT;
+	printk("%s, send MSG_CHECK_LINK\n", __FUNCTION__);
+	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_CHECK_LINK);
 
 	return 0;
 }
@@ -646,8 +707,8 @@ static int switchtec_ntb_link_disable(struct ntb_dev *ntb)
 
 	dev_dbg(&sndev->stdev->dev, "disabling link\n");
 
-	sndev->self_shared->link_sta = 0;
-	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_LINK_DOWN);
+	sndev->self_shared->link_sta = LINK_DOWN;
+	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_CHECK_LINK);
 
 	switchtec_ntb_link_status_update(sndev);
 
@@ -1365,8 +1426,6 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 		return rc;
 
 	crosslink_init_dbmsgs(sndev);
-
-	crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
 
 	return 0;
 }
