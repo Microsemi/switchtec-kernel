@@ -569,7 +569,7 @@ static void switchtec_ntb_link_status_update(struct switchtec_ntb *sndev)
 	printk("%s self_link_sta %s\n", __FUNCTION__,
 	       link_sta_to_str(*self_link_sta));
 
-	if (*self_link_sta == LINK_WAIT)
+	if (*self_link_sta == LINK_WAIT && crosslink_is_enabled(sndev))
 		crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
 
 	if (*self_link_sta != LINK_DOWN) {
