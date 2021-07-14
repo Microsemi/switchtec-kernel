@@ -134,9 +134,9 @@ static struct switchtec_ntb *ntb_sndev(struct ntb_dev *ntb)
 	return container_of(ntb, struct switchtec_ntb, ntb);
 }
 
-static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
-				 struct ntb_ctrl_regs __iomem *ctl,
-				 u32 op, int wait_status)
+static int switchtec_ntb_part_op_no_retry(struct switchtec_ntb *sndev,
+					  struct ntb_ctrl_regs __iomem *ctl,
+					  u32 op, int wait_status)
 {
 	static const char * const op_text[] = {
 		[NTB_CTRL_PART_OP_LOCK] = "lock",
@@ -147,6 +147,24 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 	int i;
 	u32 ps;
 	int status;
+	int part_id, locked_part_id;
+	int xlink_peer = ctl == sndev->mmio_xlink_peer_ctrl ? 1 : 0;
+
+	ps = ioread32(&ctl->partition_status);
+
+	locked_part_id = (ps & 0xFF0000) >> 16;
+	part_id = (ps & 0xFF000000) >> 24;
+
+	ps &= 0xFFFF;
+
+	if (ps != NTB_CTRL_PART_STATUS_NORMAL &&
+	    ps != NTB_CTRL_PART_STATUS_LOCKED)
+		return -EAGAIN;
+
+	if (ps == NTB_CTRL_PART_STATUS_LOCKED)
+		if ((xlink_peer && (locked_part_id != part_id)) ||
+		    (!xlink_peer && (locked_part_id != sndev->self_partition)))
+			return -EAGAIN;
 
 	switch (op) {
 	case NTB_CTRL_PART_OP_LOCK:
@@ -170,14 +188,24 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 			return -EINTR;
 		}
 
-		ps = ioread32(&ctl->partition_status) & 0xFFFF;
+		ps = ioread32(&ctl->partition_status);
+
+		locked_part_id = (ps & 0xFF0000) >> 16;
+		part_id = (ps & 0xFF000000) >> 24;
+
+		ps &= 0xFFFF;
 
 		if (ps != status)
 			break;
 	}
-
-	if (ps == wait_status)
+	if (ps == wait_status) {
+		if (ps == NTB_CTRL_PART_STATUS_LOCKED)
+			if ((xlink_peer && (locked_part_id != part_id)) ||
+			    (!xlink_peer &&
+			     (locked_part_id != sndev->self_partition)))
+				return -EAGAIN;
 		return 0;
+	}
 
 	if (ps == status) {
 		dev_err(&sndev->stdev->dev,
@@ -189,6 +217,28 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 	}
 
 	return -EIO;
+}
+
+static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
+				 struct ntb_ctrl_regs __iomem *ctl,
+				 u32 op, int wait_status)
+{
+	int rc;
+	int i = 0;
+
+	while (i++ < 10) {
+		rc = switchtec_ntb_part_op_no_retry(sndev, ctl, op,
+						    wait_status);
+		if (rc == -EAGAIN) {
+			msleep(20);
+			printk("==========retry========\nb");
+			continue;
+		}
+
+		break;
+	}
+
+	return rc;
 }
 
 static int switchtec_ntb_send_msg(struct switchtec_ntb *sndev, int idx,
@@ -1076,6 +1126,7 @@ static int add_req_id(struct switchtec_ntb *sndev,
 
 	table_size = ioread16(&mmio_ctrl->req_id_table_size);
 
+	printk("%s\n", __FUNCTION__);
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
 				   NTB_CTRL_PART_OP_LOCK,
 				   NTB_CTRL_PART_STATUS_LOCKED);
@@ -1138,6 +1189,7 @@ static int del_req_id(struct switchtec_ntb *sndev,
 	u32 rid;
 	bool deleted = true;
 
+	printk("%s\n", __FUNCTION__);
 	table_size = ioread16(&mmio_ctrl->req_id_table_size);
 
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
@@ -1191,6 +1243,7 @@ static int clr_req_ids(struct switchtec_ntb *sndev,
 	u32 error;
 	int table_size;
 
+	printk("%s\n", __FUNCTION__);
 	table_size = ioread16(&mmio_ctrl->req_id_table_size);
 
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
@@ -1594,7 +1647,7 @@ static int switchtec_ntb_init_shared_mw(struct switchtec_ntb *sndev)
 	}
 
 	switchtec_ntb_init_shared(sndev);
-
+printk("%s\n", __FUNCTION__);
 	rc = config_rsvd_lut_win(sndev, sndev->mmio_peer_ctrl, 0,
 				 sndev->self_partition,
 				 sndev->self_shared_dma);
