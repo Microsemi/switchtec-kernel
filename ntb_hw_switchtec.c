@@ -1965,6 +1965,8 @@ static void switchtec_ntb_remove(struct device *dev,
 	if (!sndev)
 		return;
 
+	flush_scheduled_work();
+
 	stdev->link_notifier = NULL;
 	stdev->sndev = NULL;
 	sysfs_remove_group(&sndev->ntb.dev.kobj, &switchtec_ntb_device_group);
