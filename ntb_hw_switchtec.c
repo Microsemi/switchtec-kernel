@@ -127,6 +127,8 @@ struct switchtec_ntb {
 	enum ntb_width link_width;
 	struct work_struct check_link_status_work;
 	bool link_force_down;
+
+	struct mutex nt_op_lock;
 };
 
 static struct switchtec_ntb *ntb_sndev(struct ntb_dev *ntb)
@@ -228,6 +230,7 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 	int rc;
 	int i = 0;
 
+	mutex_lock(&sndev->nt_op_lock);
 	while (i++ < 10) {
 		rc = switchtec_ntb_part_op_no_retry(sndev, ctl, op,
 						    wait_status);
@@ -238,6 +241,7 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 
 		break;
 	}
+	mutex_unlock(&sndev->nt_op_lock);
 
 	return rc;
 }
@@ -390,7 +394,6 @@ static int switchtec_ntb_mw_set_trans(struct ntb_dev *ntb, int pidx, int widx,
 			"ERROR: Memory window address is not aligned to it's size!\n");
 		return -EINVAL;
 	}
-
 	rc = switchtec_ntb_part_op(sndev, ctl, NTB_CTRL_PART_OP_LOCK,
 				   NTB_CTRL_PART_STATUS_LOCKED);
 	if (rc)
@@ -1008,6 +1011,8 @@ static int switchtec_ntb_init_sndev(struct switchtec_ntb *sndev)
 	sndev->mmio_peer_ctrl = &sndev->mmio_ctrl[sndev->peer_partition];
 	sndev->mmio_self_dbmsg = &sndev->mmio_dbmsg[sndev->self_partition];
 	sndev->mmio_peer_dbmsg = sndev->mmio_self_dbmsg;
+
+	mutex_init(&sndev->nt_op_lock);
 
 	return 0;
 }
