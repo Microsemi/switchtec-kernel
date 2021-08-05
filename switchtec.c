@@ -629,7 +629,7 @@ static __poll_t switchtec_dev_poll(struct file *filp, poll_table *wait)
 	struct switchtec_dev *stdev = stuser->stdev;
 	__poll_t ret = 0;
 
-	poll_wait(filp, &stuser->comp.wait, wait);
+	poll_wait(filp, (wait_queue_head_t *)&stuser->comp.wait, wait);
 	poll_wait(filp, &stdev->event_wq, wait);
 
 	if (lock_mutex_and_test_alive(stdev))
@@ -1787,7 +1787,8 @@ static void switchtec_pci_error_resume(struct pci_dev *pdev)
 	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
 
 	dev_info(&stdev->dev, "resume.\n");
-	pci_cleanup_aer_uncorrect_error_status(pdev);
+	pci_aer_clear_nonfatal_status(pdev);
+
 }
 
 static const struct pci_error_handlers switchtec_pci_err_handler = {

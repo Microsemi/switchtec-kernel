@@ -730,26 +730,6 @@ static u64 switchtec_ntb_db_read_mask(struct ntb_dev *ntb)
 	return (sndev->db_mask >> sndev->db_shift) & sndev->db_valid_mask;
 }
 
-static int switchtec_ntb_peer_db_addr(struct ntb_dev *ntb,
-				      phys_addr_t *db_addr,
-				      resource_size_t *db_size)
-{
-	struct switchtec_ntb *sndev = ntb_sndev(ntb);
-	unsigned long offset;
-
-	offset = (unsigned long)sndev->mmio_peer_dbmsg->odb -
-		(unsigned long)sndev->stdev->mmio;
-
-	offset += sndev->db_shift / 8;
-
-	if (db_addr)
-		*db_addr = pci_resource_start(ntb->pdev, 0) + offset;
-	if (db_size)
-		*db_size = sizeof(u32);
-
-	return 0;
-}
-
 static int switchtec_ntb_peer_db_set(struct ntb_dev *ntb, u64 db_bits)
 {
 	struct switchtec_ntb *sndev = ntb_sndev(ntb);
@@ -866,7 +846,6 @@ static const struct ntb_dev_ops switchtec_ntb_ops = {
 	.db_set_mask		= switchtec_ntb_db_set_mask,
 	.db_clear_mask		= switchtec_ntb_db_clear_mask,
 	.db_read_mask		= switchtec_ntb_db_read_mask,
-	.peer_db_addr		= switchtec_ntb_peer_db_addr,
 	.peer_db_set		= switchtec_ntb_peer_db_set,
 	.spad_count		= switchtec_ntb_spad_count,
 	.spad_read		= switchtec_ntb_spad_read,
