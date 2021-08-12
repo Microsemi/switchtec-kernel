@@ -1417,10 +1417,6 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 	if (rc)
 		return rc;
 
-	crosslink_init_dbmsgs(sndev);
-
-	crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
-
 	return 0;
 }
 
