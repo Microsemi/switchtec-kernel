@@ -127,6 +127,8 @@ struct switchtec_ntb {
 	enum ntb_width link_width;
 	struct work_struct check_link_status_work;
 	bool link_force_down;
+
+	struct mutex nt_op_lock;
 };
 
 static struct switchtec_ntb *ntb_sndev(struct ntb_dev *ntb)
@@ -392,10 +394,11 @@ static int switchtec_ntb_mw_set_trans(struct ntb_dev *ntb, int pidx, int widx,
 		return -EINVAL;
 	}
 
+	mutex_lock(&sndev->nt_op_lock);
 	rc = switchtec_ntb_part_op(sndev, ctl, NTB_CTRL_PART_OP_LOCK,
 				   NTB_CTRL_PART_STATUS_LOCKED);
 	if (rc)
-		return rc;
+		goto unlock_exit;
 
 	if (size == 0) {
 		if (widx < nr_direct_mw)
@@ -426,6 +429,8 @@ static int switchtec_ntb_mw_set_trans(struct ntb_dev *ntb, int pidx, int widx,
 				      NTB_CTRL_PART_STATUS_NORMAL);
 	}
 
+unlock_exit:
+	mutex_unlock(&sndev->nt_op_lock);
 	return rc;
 }
 
@@ -984,6 +989,8 @@ static int switchtec_ntb_init_sndev(struct switchtec_ntb *sndev)
 	sndev->mmio_self_dbmsg = &sndev->mmio_dbmsg[sndev->self_partition];
 	sndev->mmio_peer_dbmsg = sndev->mmio_self_dbmsg;
 
+	mutex_init(&sndev->nt_op_lock);
+
 	return 0;
 }
 
@@ -995,10 +1002,11 @@ static int config_rsvd_lut_win(struct switchtec_ntb *sndev,
 	u32 ctl_val;
 	int rc;
 
+	mutex_lock(&sndev->nt_op_lock);
 	rc = switchtec_ntb_part_op(sndev, ctl, NTB_CTRL_PART_OP_LOCK,
 				   NTB_CTRL_PART_STATUS_LOCKED);
 	if (rc)
-		return rc;
+		goto unlock_exit;
 
 	ctl_val = ioread32(&ctl->bar_entry[peer_bar].ctl);
 	ctl_val &= 0xFF;
@@ -1020,10 +1028,11 @@ static int config_rsvd_lut_win(struct switchtec_ntb *sndev,
 		dev_err(&sndev->stdev->dev,
 			"Error setting up reserved lut window: %08x / %08x\n",
 			bar_error, lut_error);
-		return rc;
 	}
 
-	return 0;
+unlock_exit:
+	mutex_unlock(&sndev->nt_op_lock);
+	return rc;
 }
 
 static int add_req_id(struct switchtec_ntb *sndev,
@@ -1038,11 +1047,12 @@ static int add_req_id(struct switchtec_ntb *sndev,
 
 	table_size = ioread16(&mmio_ctrl->req_id_table_size);
 
+	mutex_lock(&sndev->nt_op_lock);
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
 				   NTB_CTRL_PART_OP_LOCK,
 				   NTB_CTRL_PART_STATUS_LOCKED);
 	if (rc)
-		return rc;
+		goto unlock_exit;
 
 	for (i = 0; i < table_size; i++) {
 		proxy_id = ioread32(&mmio_ctrl->req_id_table[i]);
@@ -1052,7 +1062,7 @@ static int add_req_id(struct switchtec_ntb *sndev,
 
 		if (proxy_id & NTB_CTRL_REQ_ID_EN &&
 		    proxy_id >> 16 == req_id) {
-			goto unlock_exit;
+			goto nt_op_unlock_exit;
 		}
 	}
 
@@ -1073,7 +1083,7 @@ static int add_req_id(struct switchtec_ntb *sndev,
 		added = true;
 	}
 
-unlock_exit:
+nt_op_unlock_exit:
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
 				   NTB_CTRL_PART_OP_CFG,
 				   NTB_CTRL_PART_STATUS_NORMAL);
@@ -1086,9 +1096,11 @@ unlock_exit:
 	}
 
 	if (!added)
-		return -EFAULT;
+		rc = -EFAULT;
 
-	return 0;
+unlock_exit:
+	mutex_unlock(&sndev->nt_op_lock);
+	return rc;
 }
 
 static int del_req_id(struct switchtec_ntb *sndev,
@@ -1102,11 +1114,12 @@ static int del_req_id(struct switchtec_ntb *sndev,
 
 	table_size = ioread16(&mmio_ctrl->req_id_table_size);
 
+	mutex_lock(&sndev->nt_op_lock);
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
 				   NTB_CTRL_PART_OP_LOCK,
 				   NTB_CTRL_PART_STATUS_LOCKED);
 	if (rc)
-		return rc;
+		goto unlock_exit;
 
 	for (i = 0; i < table_size; i++) {
 		rid = ioread32(&mmio_ctrl->req_id_table[i]);
@@ -1141,9 +1154,11 @@ static int del_req_id(struct switchtec_ntb *sndev,
 	}
 
 	if (!deleted)
-		return -ENXIO;
+		rc = -ENXIO;
 
-	return 0;
+unlock_exit:
+	mutex_unlock(&sndev->nt_op_lock);
+	return rc;
 }
 
 static int clr_req_ids(struct switchtec_ntb *sndev,
@@ -1155,11 +1170,12 @@ static int clr_req_ids(struct switchtec_ntb *sndev,
 
 	table_size = ioread16(&mmio_ctrl->req_id_table_size);
 
+	mutex_lock(&sndev->nt_op_lock);
 	rc = switchtec_ntb_part_op(sndev, mmio_ctrl,
 				   NTB_CTRL_PART_OP_LOCK,
 				   NTB_CTRL_PART_STATUS_LOCKED);
 	if (rc)
-		return rc;
+		goto unlock_exit;
 
 	for (i = 0; i < table_size; i++)
 		iowrite32(0, &mmio_ctrl->req_id_table[i]);
@@ -1175,7 +1191,9 @@ static int clr_req_ids(struct switchtec_ntb *sndev,
 			error);
 	}
 
-	return 0;
+unlock_exit:
+	mutex_unlock(&sndev->nt_op_lock);
+	return rc;
 }
 
 static int crosslink_setup_mws(struct switchtec_ntb *sndev,
@@ -1191,10 +1209,11 @@ static int crosslink_setup_mws(struct switchtec_ntb *sndev,
 	int xlate_pos;
 	u32 ctl_val;
 
+	mutex_lock(&sndev->nt_op_lock);
 	rc = switchtec_ntb_part_op(sndev, ctl, NTB_CTRL_PART_OP_LOCK,
 				   NTB_CTRL_PART_STATUS_LOCKED);
 	if (rc)
-		return rc;
+		goto unlock_exit;
 
 	for (i = 0; i < sndev->nr_lut_mw; i++) {
 		if (i == ntb_dbmsg_lut_idx || i == ntb_req_id_lut_idx)
@@ -1240,10 +1259,11 @@ static int crosslink_setup_mws(struct switchtec_ntb *sndev,
 		dev_err(&sndev->stdev->dev,
 			"Error setting up cross link windows: %08x / %08x\n",
 			bar_error, lut_error);
-		return rc;
 	}
 
-	return 0;
+unlock_exit:
+	mutex_unlock(&sndev->nt_op_lock);
+	return rc;
 }
 
 static int crosslink_setup_req_ids(struct switchtec_ntb *sndev,
