@@ -134,9 +134,9 @@ static struct switchtec_ntb *ntb_sndev(struct ntb_dev *ntb)
 	return container_of(ntb, struct switchtec_ntb, ntb);
 }
 
-static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
-				 struct ntb_ctrl_regs __iomem *ctl,
-				 u32 op, int wait_status)
+static int switchtec_ntb_part_op_no_retry(struct switchtec_ntb *sndev,
+					  struct ntb_ctrl_regs __iomem *ctl,
+					  u32 op, int wait_status)
 {
 	static const char * const op_text[] = {
 		[NTB_CTRL_PART_OP_LOCK] = "lock",
@@ -147,6 +147,24 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 	int i;
 	u32 ps;
 	int status;
+	int part_id, locked_part_id;
+	int xlink_peer = ctl == sndev->mmio_xlink_peer_ctrl ? 1 : 0;
+
+	ps = ioread32(&ctl->partition_status);
+
+	locked_part_id = (ps & 0xFF0000) >> 16;
+	part_id = (ps & 0xFF000000) >> 24;
+
+	ps &= 0xFFFF;
+
+	if (ps != NTB_CTRL_PART_STATUS_NORMAL &&
+	    ps != NTB_CTRL_PART_STATUS_LOCKED)
+		return -EAGAIN;
+
+	if (ps == NTB_CTRL_PART_STATUS_LOCKED)
+		if ((xlink_peer && (locked_part_id != part_id)) ||
+		    (!xlink_peer && (locked_part_id != sndev->self_partition)))
+			return -EAGAIN;
 
 	switch (op) {
 	case NTB_CTRL_PART_OP_LOCK:
@@ -170,10 +188,22 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 			return -EINTR;
 		}
 
-		ps = ioread32(&ctl->partition_status) & 0xFFFF;
+		ps = ioread32(&ctl->partition_status);
+
+		locked_part_id = (ps & 0xFF0000) >> 16;
+		part_id = (ps & 0xFF000000) >> 24;
+
+		ps &= 0xFFFF;
 
 		if (ps != status)
 			break;
+	}
+
+	if (ps == NTB_CTRL_PART_STATUS_LOCKED) {
+		if ((xlink_peer && (locked_part_id != part_id)) ||
+		    (!xlink_peer &&
+		     (locked_part_id != sndev->self_partition)))
+			return -EAGAIN;
 	}
 
 	if (ps == wait_status)
@@ -189,6 +219,28 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 	}
 
 	return -EIO;
+}
+
+static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
+				 struct ntb_ctrl_regs __iomem *ctl,
+				 u32 op, int wait_status)
+{
+	int rc;
+	int i = 0;
+
+	while (i++ < 10) {
+		rc = switchtec_ntb_part_op_no_retry(sndev, ctl, op,
+						    wait_status);
+		if (rc == -EAGAIN) {
+			if (msleep_interruptible(30) != 0)
+				return -EINTR;
+			continue;
+		}
+
+		break;
+	}
+
+	return rc;
 }
 
 static int switchtec_ntb_send_msg(struct switchtec_ntb *sndev, int idx,
@@ -536,14 +588,21 @@ enum switchtec_msg {
 
 static int switchtec_ntb_reinit_peer(struct switchtec_ntb *sndev);
 
+static int crosslink_setup_req_ids(struct switchtec_ntb *sndev,
+		struct ntb_ctrl_regs __iomem *mmio_ctrl);
+
 static void switchtec_ntb_link_status_update(struct switchtec_ntb *sndev)
 {
 	int link_sta;
 	int old = sndev->link_is_up;
+	u64 peer;
 
 	link_sta = sndev->self_shared->link_sta;
 	if (link_sta) {
-		u64 peer = ioread64(&sndev->peer_shared->magic);
+		if (!sndev->link_is_up && crosslink_is_enabled(sndev))
+			crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
+
+		peer = ioread64(&sndev->peer_shared->magic);
 
 		if ((peer & 0xFFFFFFFF) == SWITCHTEC_NTB_MAGIC)
 			link_sta = peer >> 32;
@@ -618,9 +677,6 @@ static u64 switchtec_ntb_link_is_up(struct ntb_dev *ntb,
 	return sndev->link_is_up;
 }
 
-static int crosslink_setup_req_ids(struct switchtec_ntb *sndev,
-	struct ntb_ctrl_regs __iomem *mmio_ctrl);
-
 static int switchtec_ntb_link_enable(struct ntb_dev *ntb,
 				     enum ntb_speed max_speed,
 				     enum ntb_width max_width)
@@ -631,11 +687,6 @@ static int switchtec_ntb_link_enable(struct ntb_dev *ntb,
 
 	sndev->self_shared->link_sta = 1;
 	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_LINK_UP);
-
-	if (crosslink_is_enabled(sndev))
-		crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
-
-	switchtec_ntb_link_status_update(sndev);
 
 	return 0;
 }
@@ -1364,10 +1415,6 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 	if (rc)
 		return rc;
 
-	crosslink_init_dbmsgs(sndev);
-
-	crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
-
 	return 0;
 }
 
@@ -1852,6 +1899,8 @@ static void switchtec_ntb_remove(struct device *dev,
 
 	if (!sndev)
 		return;
+
+	flush_scheduled_work();
 
 	stdev->link_notifier = NULL;
 	stdev->sndev = NULL;
