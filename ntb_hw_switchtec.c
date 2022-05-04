@@ -1437,7 +1437,6 @@ static int switchtec_ntb_setup_crosslink(struct switchtec_ntb *sndev)
 
 		sndev->mmio_xlink_peer_ctrl = sndev->mmio_xlink_ctrl_win +
 			offset;
-		sndev->nr_rsvd_luts++;
 	}
 
 	if (!sndev->mmio_xlink_dbmsg_win) {
@@ -1461,7 +1460,6 @@ static int switchtec_ntb_setup_crosslink(struct switchtec_ntb *sndev)
 			return -ENOMEM;
 
 		sndev->mmio_peer_dbmsg = sndev->mmio_xlink_dbmsg_win + offset;
-		sndev->nr_rsvd_luts++;
 	}
 
 	crosslink_init_dbmsgs(sndev);
@@ -1496,6 +1494,13 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 		return -EINVAL;
 	}
 
+	sndev->nr_rsvd_luts += 3;
+
+	rc = crosslink_setup_mws(sndev, NT_INFO_LUT, DB_MSG_LUT, REQ_ID_LUT,
+				 &bar_addrs[1], bar_cnt - 1);
+	if (rc)
+		return rc;
+
 	addr = (bar_addrs[0] + SWITCHTEC_GAS_NTB_OFFSET +
 		SWITCHTEC_NTB_REG_INFO_OFFSET);
 
@@ -1516,23 +1521,14 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 	}
 
 	sndev->mmio_xlink_peer_ntb = sndev->mmio_xlink_ntinfo_win + offset;
-	sndev->nr_rsvd_luts++;
-
-	rc = crosslink_setup_mws(sndev, NT_INFO_LUT, DB_MSG_LUT, REQ_ID_LUT,
-				 &bar_addrs[1], bar_cnt - 1);
-	if (rc)
-		return rc;
 
 	return 0;
 }
 
 static void switchtec_ntb_deinit_crosslink(struct switchtec_ntb *sndev)
 {
-	if (sndev->mmio_xlink_dbmsg_win)
-		pci_iounmap(sndev->stdev->pdev, sndev->mmio_xlink_dbmsg_win);
-
-	if (sndev->mmio_xlink_ctrl_win)
-		pci_iounmap(sndev->stdev->pdev, sndev->mmio_xlink_ctrl_win);
+	if (sndev->mmio_xlink_ntinfo_win)
+		pci_iounmap(sndev->stdev->pdev, sndev->mmio_xlink_ntinfo_win);
 }
 
 static int map_bars(int *map, struct ntb_ctrl_regs __iomem *ctrl)
