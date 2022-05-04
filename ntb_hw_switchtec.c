@@ -1528,7 +1528,7 @@ static void switchtec_ntb_init_db(struct switchtec_ntb *sndev)
 {
 	sndev->db_mask = 0x0FFFFFFFFFFFFFFFULL;
 
-	if (sndev->mmio_peer_dbmsg != sndev->mmio_self_dbmsg) {
+	if (crosslink_is_enabled(sndev)) {
 		sndev->db_shift = 0;
 		sndev->db_peer_shift = 0;
 		sndev->db_valid_mask = sndev->db_mask;
