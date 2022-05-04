@@ -863,6 +863,8 @@ static int switchtec_ntb_link_enable(struct ntb_dev *ntb,
 	dev_dbg(&sndev->stdev->dev, "enabling link\n");
 
 	sndev->self_shared->link_sta = 1;
+	switchtec_ntb_link_status_update(sndev);
+
 	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_LINK_UP);
 
 	return 0;
