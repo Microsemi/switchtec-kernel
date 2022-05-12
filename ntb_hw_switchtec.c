@@ -720,7 +720,6 @@ static int switchtec_ntb_setup_crosslink(struct switchtec_ntb *sndev)
 
 		sndev->mmio_xlink_peer_ctrl = sndev->mmio_xlink_ctrl_win +
 			offset;
-		sndev->nr_rsvd_luts++;
 	}
 
 	if (!sndev->mmio_xlink_dbmsg_win) {
@@ -744,7 +743,6 @@ static int switchtec_ntb_setup_crosslink(struct switchtec_ntb *sndev)
 			return -ENOMEM;
 
 		sndev->mmio_peer_dbmsg = sndev->mmio_xlink_dbmsg_win + offset;
-		sndev->nr_rsvd_luts++;
 	}
 
 	crosslink_init_dbmsgs(sndev);
@@ -1515,6 +1513,7 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 		return -EINVAL;
 	}
 
+	sndev->nr_rsvd_luts += 3;
 	rc = crosslink_setup_mws(sndev, NT_INFO_LUT, DB_MSG_LUT, REQ_ID_LUT,
 				 &bar_addrs[1], bar_cnt - 1);
 	if (rc)
@@ -1540,7 +1539,6 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 	}
 
 	sndev->mmio_xlink_peer_ntb = sndev->mmio_xlink_ntinfo_win + offset;
-	sndev->nr_rsvd_luts++;
 
 	return 0;
 }
