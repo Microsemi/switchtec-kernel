@@ -566,16 +566,50 @@ static int crosslink_is_enabled(struct switchtec_ntb *sndev)
 	return ioread8(&inf->ntp_info[sndev->peer_partition].xlink_enabled);
 }
 
-static void crosslink_init_dbmsgs(struct switchtec_ntb *sndev)
+static int crosslink_init_dbmsgs(struct switchtec_ntb *sndev)
 {
 	int i;
+	u64 tpart_vec;
+	u64 part_map;
+	struct ntb_info_regs *xlink_ntb = sndev->mmio_xlink_peer_ntb;
+	int xlink_self, xlink_peer;
 	u32 msg_map = 0;
 
 	if (!crosslink_is_enabled(sndev))
-		return;
+		return 0;
+
+	xlink_peer = ioread8(&xlink_ntb->partition_id);
+	if (xlink_peer == 0xFF)
+		return -EIO;
+
+	tpart_vec = ioread32(&xlink_ntb->ntp_info[xlink_peer].target_part_high);
+	tpart_vec <<= 32;
+	tpart_vec |= ioread32(&xlink_ntb->ntp_info[xlink_peer].target_part_low);
+	part_map = ioread32(&xlink_ntb->ep_map_high);
+	part_map <<= 32;
+	part_map |= ioread32(&xlink_ntb->ep_map_low);
+	part_map &= ~(1 << xlink_peer);
+	tpart_vec &= part_map;
+
+	if (!tpart_vec) {
+		dev_err(&sndev->stdev->dev,
+			"Remote crosslink partition has no NT target defined\n");
+		return -ENODEV;
+	}
+
+	if (__ffs64(tpart_vec) != (fls64(tpart_vec) - 1)) {
+		dev_err(&sndev->stdev->dev,
+			"Remote crosslink partition has more than 1 NT target\n");
+		return -ENODEV;
+	}
+
+	xlink_self = __ffs64(tpart_vec);
+
+	dev_dbg(&sndev->stdev->dev,
+		"Remote self %d, peer %d\n", xlink_self, xlink_peer);
 
 	for (i = 0; i < ARRAY_SIZE(sndev->mmio_peer_dbmsg->imsg); i++) {
-		int m = i | sndev->self_partition << 2;
+		int m = i | xlink_self << 2;
 
 		msg_map |= m << i * 8;
 	}
@@ -583,6 +617,8 @@ static void crosslink_init_dbmsgs(struct switchtec_ntb *sndev)
 	iowrite32(msg_map, &sndev->mmio_peer_dbmsg->msg_map);
 	iowrite64(sndev->db_valid_mask << sndev->db_peer_shift,
 		  &sndev->mmio_peer_dbmsg->odb_mask);
+
+	return 0;
 }
 
 enum switchtec_msg {
