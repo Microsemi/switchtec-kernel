@@ -639,6 +639,14 @@ unlock_exit:
 	return rc;
 }
 
+enum {
+	NT_INFO_LUT = 1,
+	DB_MSG_LUT = 2,
+	REQ_ID_LUT = 3,
+};
+
+static u64 bar_addrs[6];
+
 static void switchtec_ntb_link_status_update(struct switchtec_ntb *sndev)
 {
 	int link_sta;
@@ -1339,10 +1347,6 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 {
 	int rc;
 	int bar = sndev->direct_mw_to_bar[0];
-	const int ntinfo_lut_idx = 1;
-	const int dbmsg_lut_idx = 2;
-	const int req_id_lut_idx = 3;
-	u64 bar_addrs[6];
 	u64 addr;
 	int offset;
 	int bar_cnt;
@@ -1367,13 +1371,13 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 	offset = addr & (LUT_SIZE - 1);
 	addr -= offset;
 
-	rc = config_rsvd_lut_win(sndev, sndev->mmio_self_ctrl, dbmsg_lut_idx,
+	rc = config_rsvd_lut_win(sndev, sndev->mmio_self_ctrl, DB_MSG_LUT,
 				 sndev->peer_partition, addr);
 	if (rc)
 		return rc;
 
 	sndev->mmio_xlink_dbmsg_win = pci_iomap_range(sndev->stdev->pdev, bar,
-						      dbmsg_lut_idx * LUT_SIZE,
+						      DB_MSG_LUT * LUT_SIZE,
 						      LUT_SIZE);
 	if (!sndev->mmio_xlink_dbmsg_win) {
 		rc = -ENOMEM;
@@ -1391,13 +1395,13 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 	addr -= offset;
 
 	rc = config_rsvd_lut_win(sndev, sndev->mmio_self_ctrl,
-				 req_id_lut_idx,
+				 REQ_ID_LUT,
 				 sndev->peer_partition, addr);
 	if (rc)
 		return rc;
 
 	sndev->mmio_xlink_ctrl_win = pci_iomap_range(sndev->stdev->pdev, bar,
-						     req_id_lut_idx * LUT_SIZE,
+						     REQ_ID_LUT * LUT_SIZE,
 						     LUT_SIZE);
 	if (!sndev->mmio_xlink_ctrl_win) {
 		rc = -ENOMEM;
@@ -1407,8 +1411,8 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 	sndev->mmio_xlink_peer_ctrl = sndev->mmio_xlink_ctrl_win + offset;
 	sndev->nr_rsvd_luts++;
 
-	rc = crosslink_setup_mws(sndev, ntinfo_lut_idx, dbmsg_lut_idx,
-				 req_id_lut_idx, &bar_addrs[1], bar_cnt - 1);
+	rc = crosslink_setup_mws(sndev, NT_INFO_LUT, DB_MSG_LUT, REQ_ID_LUT,
+				 &bar_addrs[1], bar_cnt - 1);
 	if (rc)
 		return rc;
 
@@ -1418,14 +1422,14 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 	offset = addr & (LUT_SIZE - 1);
 	addr -= offset;
 
-	rc = config_rsvd_lut_win(sndev, sndev->mmio_self_ctrl, ntinfo_lut_idx,
+	rc = config_rsvd_lut_win(sndev, sndev->mmio_self_ctrl, NT_INFO_LUT,
 				 sndev->peer_partition, addr);
 	if (rc)
 		return rc;
 
 	sndev->mmio_xlink_ntinfo_win = pci_iomap_range(sndev->stdev->pdev, bar,
-						       ntinfo_lut_idx *
-						       LUT_SIZE, LUT_SIZE);
+						       NT_INFO_LUT * LUT_SIZE,
+						       LUT_SIZE);
 	if (!sndev->mmio_xlink_ntinfo_win) {
 		rc = -ENOMEM;
 		return rc;
