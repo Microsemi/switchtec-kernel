@@ -711,6 +711,12 @@ static int switchtec_ntb_setup_crosslink(struct switchtec_ntb *sndev)
 		sndev->nr_rsvd_luts++;
 	}
 
+	crosslink_init_dbmsgs(sndev);
+
+	rc = crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
+	if (rc)
+		return rc;
+
 	return 0;
 }
 
@@ -722,10 +728,8 @@ static void switchtec_ntb_link_status_update(struct switchtec_ntb *sndev)
 
 	link_sta = sndev->self_shared->link_sta;
 	if (link_sta) {
-		if (!sndev->link_is_up && crosslink_is_enabled(sndev)) {
-			crosslink_setup_req_ids(sndev, sndev->mmio_xlink_peer_ctrl);
+		if (!sndev->link_is_up && crosslink_is_enabled(sndev))
 			switchtec_ntb_setup_crosslink(sndev);
-		}
 
 		peer = ioread64(&sndev->peer_shared->magic);
 
@@ -743,9 +747,6 @@ static void switchtec_ntb_link_status_update(struct switchtec_ntb *sndev)
 		ntb_link_event(&sndev->ntb);
 		dev_info(&sndev->stdev->dev, "ntb link %s\n",
 			 link_sta ? "up" : "down");
-
-		if (link_sta)
-			crosslink_init_dbmsgs(sndev);
 	}
 }
 
