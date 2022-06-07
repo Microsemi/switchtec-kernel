@@ -25,6 +25,7 @@
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/nospec.h>
 #include <linux/aer.h>
+#include <linux/version.h>
 
 #include "version.h"
 
@@ -1801,7 +1802,12 @@ static void switchtec_pci_error_resume(struct pci_dev *pdev)
 	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
 
 	dev_info(&stdev->dev, "resume.\n");
-	pci_cleanup_aer_uncorrect_error_status(pdev);
+	// pci_cleanup_aer_uncorrect_error_status(pdev);
+	#if KERNEL_VERSION(5,7,0) <= LINUX_VERSION_CODE || defined(RHEL_MAJOR) && RHEL_RELEASE_VERSION(8,3) <= RHEL_RELEASE_CODE
+		pci_aer_clear_nonfatal_status(pdev);
+	#else
+		pci_cleanup_aer_uncorrect_error_status(pdev);
+	#endif
 }
 
 static const struct pci_error_handlers switchtec_pci_err_handler = {
