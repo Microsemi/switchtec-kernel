@@ -27,6 +27,12 @@
 #include <linux/aer.h>
 
 #include "version.h"
+
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(5,0,0) )
+#ifndef dma_zalloc_coherent
+#define dma_zalloc_coherent(d, s, h, f) dma_alloc_coherent(d, s, h, f)
+#endif
+
 MODULE_DESCRIPTION("Microsemi Switchtec(tm) PCIe Management Driver");
 MODULE_VERSION(VERSION);
 MODULE_LICENSE("GPL");
