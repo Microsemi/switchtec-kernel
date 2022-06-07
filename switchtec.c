@@ -1225,6 +1225,14 @@ static long switchtec_dev_ioctl(struct file *filp, unsigned int cmd,
 		rc = ioctl_event_summary(stdev, stuser, argp,
 					 sizeof(struct switchtec_ioctl_event_summary));
 		break;
+	case SWITCHTEC_IOCTL_SG_CMD:
+		printk("%s: SG ioctl\n", __FUNCTION__);
+		rc = fem_sg_ioctl(filp, cmd, arg);
+		break;
+	case SG_OEM_PAGE:
+		LOG_DEBUG("%s: Light SG OEM page\n", __FUNCTION__);
+		rc = pmc_psx_ioctl(filp,cmd,arg);
+		break;
 	default:
 		rc = -ENOTTY;
 		break;
