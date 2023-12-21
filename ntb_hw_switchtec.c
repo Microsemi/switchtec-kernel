@@ -1960,6 +1960,7 @@ static int switchtec_ntb_add(struct device *dev,
 	 * still up. Tell them to force it down (it will go back up
 	 * once we register the ntb device).
 	 */
+	switchtec_ntb_setup_crosslink(sndev);
 	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_LINK_FORCE_DOWN);
 
 	rc = ntb_register_device(&sndev->ntb);
