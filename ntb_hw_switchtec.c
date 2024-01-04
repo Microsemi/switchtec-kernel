@@ -383,7 +383,7 @@ static int switchtec_ntb_mw_set_trans(struct ntb_dev *ntb, int pidx, int widx,
 	if (size != 0 && xlate_pos < 12)
 		return -EINVAL;
 
-	if (!IS_ALIGNED(addr, BIT_ULL(xlate_pos))) {
+	if (size != 0 && !IS_ALIGNED(addr, BIT_ULL(xlate_pos))) {
 		/*
 		 * In certain circumstances we can get a buffer that is
 		 * not aligned to its size. (Most of the time
@@ -1988,6 +1988,7 @@ static int switchtec_ntb_add(struct device *dev,
 	 * still up. Tell them to force it down (it will go back up
 	 * once we register the ntb device).
 	 */
+	switchtec_ntb_setup_crosslink(sndev);
 	switchtec_ntb_send_msg(sndev, LINK_MESSAGE, MSG_LINK_FORCE_DOWN);
 
 	rc = ntb_register_device(&sndev->ntb);
