@@ -103,6 +103,9 @@ struct switchtec_ntb {
 	void __iomem *mmio_xlink_dbmsg_win;
 	void __iomem *mmio_xlink_ctrl_win;
 
+	/* synchronize xlink_dbmsg_win/xlink_ctrl_win setup/dereference */
+	spinlock_t xlink_wins_lock;
+
 	struct shared_mw *self_shared;
 	struct shared_mw __iomem *peer_shared;
 	dma_addr_t self_shared_dma;
@@ -247,11 +250,30 @@ static int switchtec_ntb_part_op(struct switchtec_ntb *sndev,
 	return rc;
 }
 
+static int crosslink_is_enabled(struct switchtec_ntb *sndev)
+{
+	struct ntb_info_regs __iomem *inf = sndev->mmio_ntb;
+
+	return ioread8(&inf->ntp_info[sndev->peer_partition].xlink_enabled);
+}
+
 static int switchtec_ntb_send_msg(struct switchtec_ntb *sndev, int idx,
 				  u32 val)
 {
 	if (idx < 0 || idx >= ARRAY_SIZE(sndev->mmio_peer_dbmsg->omsg))
 		return -EINVAL;
+
+	if (crosslink_is_enabled(sndev)) {
+		spin_lock(&sndev->xlink_wins_lock);
+		if (!sndev->mmio_peer_dbmsg) {
+			spin_unlock(&sndev->xlink_wins_lock);
+			return -EIO;
+		}
+
+		iowrite32(val, &sndev->mmio_peer_dbmsg->omsg[idx].msg);
+		spin_unlock(&sndev->xlink_wins_lock);
+		return 0;
+	}
 
 	iowrite32(val, &sndev->mmio_peer_dbmsg->omsg[idx].msg);
 
@@ -559,13 +581,6 @@ static void switchtec_ntb_set_link_speed(struct switchtec_ntb *sndev)
 	sndev->link_width = min(self_width, peer_width);
 }
 
-static int crosslink_is_enabled(struct switchtec_ntb *sndev)
-{
-	struct ntb_info_regs __iomem *inf = sndev->mmio_ntb;
-
-	return ioread8(&inf->ntp_info[sndev->peer_partition].xlink_enabled);
-}
-
 static int crosslink_init_dbmsgs(struct switchtec_ntb *sndev)
 {
 	int i;
@@ -760,11 +775,17 @@ static void switchtec_ntb_cleanup_crosslink(struct switchtec_ntb *sndev)
 		return;
 
 	if (sndev->mmio_xlink_dbmsg_win) {
+		spin_lock(&sndev->xlink_wins_lock);
+		sndev->mmio_peer_dbmsg = NULL;
+		spin_unlock(&sndev->xlink_wins_lock);
 		pci_iounmap(sndev->stdev->pdev, sndev->mmio_xlink_dbmsg_win);
 		sndev->mmio_xlink_dbmsg_win = NULL;
 	}
 
 	if (sndev->mmio_xlink_ctrl_win) {
+		spin_lock(&sndev->xlink_wins_lock);
+		sndev->mmio_xlink_peer_ctrl = NULL;
+		spin_unlock(&sndev->xlink_wins_lock);
 		pci_iounmap(sndev->stdev->pdev, sndev->mmio_xlink_ctrl_win);
 		sndev->mmio_xlink_ctrl_win = NULL;
 	}
@@ -1541,6 +1562,8 @@ static int switchtec_ntb_init_crosslink(struct switchtec_ntb *sndev)
 	}
 
 	sndev->mmio_xlink_peer_ntb = sndev->mmio_xlink_ntinfo_win + offset;
+
+	spin_lock_init(&sndev->xlink_wins_lock);
 
 	return 0;
 }
