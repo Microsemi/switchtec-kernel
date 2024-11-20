@@ -1684,7 +1684,6 @@ static int switchtec_pci_probe(struct pci_dev *pdev,
 		goto err_devadd;
 
 	dev_info(&stdev->dev, "Management device registered.\n");
-	pci_enable_pcie_error_reporting(pdev);
 	pci_save_state(pdev);
 
 	return 0;
@@ -1715,7 +1714,6 @@ static void switchtec_pci_disable(struct pci_dev *pdev)
 	struct switchtec_dev *stdev = pci_get_drvdata(pdev);
 
 	if (pci_is_enabled(pdev)) {
-		pci_disable_pcie_error_reporting(pdev);
 		pci_disable_device(pdev);
 	}
 
@@ -1793,7 +1791,6 @@ static pci_ers_result_t switchtec_pci_slot_reset(struct pci_dev *pdev)
 	stdev->alive = true;
 	stdev->mrpc_busy = 0;
 
-	pci_enable_pcie_error_reporting(pdev);
 	pci_save_state(pdev);
 
 	return PCI_ERS_RESULT_RECOVERED;
