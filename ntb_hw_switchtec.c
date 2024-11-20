@@ -2015,7 +2015,7 @@ static void switchtec_ntb_remove(struct device *dev)
 	if (!sndev)
 		return;
 
-	flush_scheduled_work();
+	flush_work(&sndev->check_link_status_work);
 
 	stdev->link_notifier = NULL;
 	stdev->sndev = NULL;
