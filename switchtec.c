@@ -1537,7 +1537,7 @@ static void init_pff(struct switchtec_dev *stdev)
 
 	for (i = 0; i < SWITCHTEC_MAX_PFF_CSR; i++) {
 		reg = ioread16(&stdev->mmio_pff_csr[i].vendor_id);
-		if (reg != PCI_VENDOR_ID_MICROSEMI)
+		if ((reg != PCI_VENDOR_ID_MICROSEMI) && (reg != PCI_VENDOR_ID_EFAR))
 			break;
 	}
 
