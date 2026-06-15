@@ -25,6 +25,7 @@
 #include <linux/io-64-nonatomic-lo-hi.h>
 #include <linux/nospec.h>
 #include <linux/aer.h>
+#include <linux/delay.h>
 
 #include "version.h"
 MODULE_DESCRIPTION("Microsemi Switchtec(tm) PCIe Management Driver");
@@ -80,9 +81,17 @@ struct switchtec_user {
 
 static int check_access(struct switchtec_dev *stdev)
 {
-	u32 device = ioread32(&stdev->mmio_sys_info->device_id);
+	int i;
+	u32 device;
 
-	return stdev->pdev->device == device;
+	for (i = 0; i < 10; i++) {
+		device = ioread32(&stdev->mmio_sys_info->device_id);
+		if (stdev->pdev->device == device)
+			return 1;
+		msleep(100);
+	}
+
+	return 0;
 }
 
 static struct switchtec_user *stuser_create(struct switchtec_dev *stdev)
