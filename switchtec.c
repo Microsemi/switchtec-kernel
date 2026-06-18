@@ -1558,6 +1558,20 @@ static void init_pff(struct switchtec_dev *stdev)
 	}
 }
 
+static bool is_cascaded(struct pci_dev *pdev)
+{
+	struct pci_dev *parent = pdev->bus->self;
+
+	while (parent) {
+		if (parent->vendor == PCI_VENDOR_ID_MICROSEMI ||
+		    parent->vendor == PCI_VENDOR_ID_EFAR)
+			return true;
+		parent = parent->bus->self;
+	}
+
+	return false;
+}
+
 static int switchtec_init_pci(struct switchtec_dev *stdev,
 			      struct pci_dev *pdev)
 {
@@ -1621,6 +1635,9 @@ static int switchtec_init_pci(struct switchtec_dev *stdev,
 	pci_set_drvdata(pdev, stdev);
 
 	if (!use_dma_mrpc)
+		return 0;
+
+	if (is_cascaded(pdev))
 		return 0;
 
 	if (!ioread32(&stdev->mmio_mrpc->dma_ver))
