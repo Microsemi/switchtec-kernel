@@ -1450,7 +1450,12 @@ static irqreturn_t switchtec_event_isr(int irq, void *dev)
 
 	for (eid = 0; eid < SWITCHTEC_IOCTL_MAX_EVENTS; eid++) {
 		if (eid == SWITCHTEC_IOCTL_EVENT_LINK_STATE ||
-		    eid == SWITCHTEC_IOCTL_EVENT_MRPC_COMP)
+		    eid == SWITCHTEC_IOCTL_EVENT_MRPC_COMP ||
+		    eid == SWITCHTEC_IOCTL_EVENT_MRPC_COMP_ASYNC ||
+		    eid == SWITCHTEC_IOCTL_EVENT_TWI_MRPC_COMP ||
+		    eid == SWITCHTEC_IOCTL_EVENT_TWI_MRPC_COMP_ASYNC ||
+		    eid == SWITCHTEC_IOCTL_EVENT_CLI_MRPC_COMP ||
+		    eid == SWITCHTEC_IOCTL_EVENT_CLI_MRPC_COMP_ASYNC)
 			continue;
 
 		event_count += mask_all_events(stdev, eid);
